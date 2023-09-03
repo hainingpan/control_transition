@@ -1,6 +1,9 @@
 import numpy as np
 from functools import reduce
 import scipy.sparse as sp
+from fractions import Fraction
+from functools import partial, lru_cache
+
 class CT_classical:
     def __init__(self,L,history=False,seed=None,x0=None):
         '''
@@ -10,22 +13,26 @@ class CT_classical:
         self.L=L
         self.history=history
         self.rng=np.random.default_rng(seed)
-        self.x0=self.rng.random() if x0 is None else x0
+        # self.x0=self.rng.random() if x0 is None else x0
+        self.x0=x0
         self.op_history=[]  # control: true, Bernoulli: false
-        self.binary=self._initialize_binary([1/6,1/3])
+        self.binary=self._initialize_binary([Fraction(1,6),Fraction(1,3)])
 
         self.vec=self._initialize_vector()
         self.vec_history=[self.vec]
     def _initialize_vector(self):
         '''save using an array of L'''
-        vec=dec2bin(self.x0,self.L)
+        if self.x0 is None:
+            vec=self.rng.integers(low=0,high=2,size=(self.L,))
+        else:
+            vec=dec2bin(self.x0,self.L)
         return vec
     def _initialize_binary(self,x_list):
         return {x:dec2bin(x, self.L) for x in x_list}
 
     def Bernoulli_map(self,vec):
         vec=np.roll(vec,-1)
-        vec[-2:]=self.rng.permutation(vec[-2:])        
+        vec[-3:]=self.rng.permutation(vec[-3:])        
         return vec
     
     def control_map(self,vec):
@@ -33,10 +40,11 @@ class CT_classical:
         vec=np.roll(vec,1)
         if vec[1]==0:
             # attract to 1/3
-            vec=add_binary(vec,self.binary[1/6])
+            # here is a slight difference for the last digit, but this does not matter in the thermaldynamic limit
+            vec=add_binary(vec,self.binary[Fraction(1,6)])
         else:
             # attract to 2/3
-            vec=add_binary(vec,self.binary[1/3])
+            vec=add_binary(vec,self.binary[Fraction(1,3)])
         return vec
 
     def random_control(self,p):
@@ -63,7 +71,8 @@ class CT_classical:
         return -vec_Z@vec_Z_shift/self.L
 
 class CT_quantum:
-    def __init__(self,L,history=False,seed=None,x0=None):
+    
+    def __init__(self,L,history=False,seed=None,x0=None,_eps=1e-10):
         '''save using an array of 2^L'''
         self.L=L
         self.history=history
@@ -72,7 +81,8 @@ class CT_quantum:
         self.op_history=[]  # control: true, Bernoulli: false
         self.vec=self._initialize_vector()
         self.vec_history=[self.vec]
-        self.T={'L':T(self.L,left=True),'R':T(self.L,left=False)}
+        self._eps=_eps
+        # self.T={'L':T(self.L,left=True),'R':T(self.L,left=False)}
     
     def _initialize_vector(self):
         '''save using an array of 2^L'''
@@ -82,25 +92,87 @@ class CT_quantum:
         return vec
 
     def Bernoulli_map(self,vec):
-        vec=self.T['L']@vec
-        vec=T(vec)
-        vec=S(m,vec)
+        vec=T(self.L,left=True)@vec
+        vec=S(self.L,rng=self.rng)@vec
         return vec
     
-    def control_map(self,vec):
-        vec[-1]=0
-        vec=np.roll(vec,1)
-        if vec[1]==0:
-            # attract to 1/3
-            vec=add_binary(vec,self.binary[1/6])
-        else:
-            # attract to 2/3
-            vec=add_binary(vec,self.binary[1/3])
+    def control_map(self,vec,bL):
+        '''control map depends on the outcome of the measurement of bL'''
+        # projection on the last bits
+        vec=P(self.L,bL)@vec
+        if bL==1:
+            vec=XL(self.L)@vec
+        vec=normalize(vec)
+        # right shift 
+        vec=T(self.L,left=False)@vec
+
+        assert np.abs(vec[vec.shape[0]//2:]).sum() == 0, f'first qubit is not zero ({np.abs(vec[vec.shape[0]//2:]).sum()}) after right shift '
+
+        # Adder
+        vec=adder(self.L)@vec
+        
         return vec
+
+    def projection_map(self,vec,pos,n):
+        '''projection to `pos` with outcome of `n`
+        note that here is 0-index, and pos=L-1 is the last bit'''
+        vec=P(self.L,n=n,pos=pos)@vec
+        vec=normalize(vec)
+
+        return vec
+
+    def random_control(self,p_ctrl,p_proj):
+        '''
+        p_ctrl: the control probability
+        p_proj: the projection probability
+        '''
+        vec=self.vec_history[-1].copy()
+
+        p={}
+        p[("L",0)]= vec.conj()@P(self.L,n=0,pos=self.L-1)@vec
+        p[("L",1)] = vec.conj()@P(self.L,n=1,pos=self.L-1)@vec
+        p[("L-1",0)] = vec.conj()@P(self.L,n=0,pos=self.L-2)@vec
+        p[("L-1",1)] = vec.conj()@P(self.L,n=1,pos=self.L-2)@vec
+        
+        for key, val in p.items():
+            assert np.abs(val.imag)<self._eps, f'probability for {key} is not real {val}'
+            p[key]=val.real
+        
+        pool = ["C0","C1","PL0","PL1","PL-10","PL-11","chaotic"]
+        probabilities = [p_ctrl * p[("L",0)], p_ctrl * p[("L",1)], p_proj * p[("L",0)], p_proj *  p[("L",1)], p_proj * p[("L-1",0)], p_proj * p[("L-1",1)], 1- p_ctrl-2*p_proj]
+
+        op = self.rng.choice(pool,p=probabilities)
+
+        op_list= {"C0":partial(self.control_map,bL=0),
+                  "C1":partial(self.control_map,bL=1),
+                  "PL0":partial(self.projection_map,pos=self.L-1,n=0),
+                  "PL1":partial(self.projection_map,pos=self.L-1,n=1),
+                  "PL-10":partial(self.projection_map,pos=self.L-2,n=0),
+                  "PL-11":partial(self.projection_map,pos=self.L-2,n=1),
+                  "chaotic":self.Bernoulli_map
+                  }
+
+        vec=op_list[op](vec)
+        
+        if self.history:
+            self.vec_history.append(vec)
+            self.op_history.append(op)
+        else:
+            self.vec_history=[vec]
+            self.op_history=[op]
+    
+    def order_parameter(self):
+        vec=self.vec_history[-1].copy()
+        O=vec.conj()@ZZ(self.L)@vec
+
+        assert np.abs(O.imag)<self._eps, f'<O> is not real ({val}) '
+        return O.real
+
+        
 
 def dec2bin(x,L):
     '''
-    convert a float number x in [0,1) to the binary form with maximal length of L, where the leading 0 is truncated
+    convert a float number x in [0,1) to the binary form with maximal length of L, where the leading 0 as integer part is truncated
     Example, 1/3 is 010101...
     '''
     assert 0<=x<1, f'{x} is not in [0,1)'
@@ -129,16 +201,19 @@ def add_binary(vec1,vec2):
     else:
         return np.array(vec1_sum)
 
+kron_list=lambda x: reduce(sp.kron,x)
+
+@lru_cache(maxsize=None)
 def T(L,left=True):
     '''
     circular right shift the computational basis `vec` : 
-    a_{L-1} a_{L-2}.. a_{1} a_{0} -> right shift -> a_{0} a_{L-1} a_{L-2}.. a_{1} 
-    a_{L-1} a_{L-2}.. a_{1} a_{0} -> left shift -> a_{L-2}.. a_{1} a_{0} a_{L-1}
+    b_1 b_2 ... b_L -> right shift -> b_L b_1 ... b_{L-1}
+    b_1 b_2 ... b_L -> left shift ->  b_2 b_3... b_{L-1} b_L
     '''
     SWAP=sp.csr_array([[1,0,0,0],[0,0,1,0],[0,1,0,0],[0,0,0,1]],dtype=int)
     I2=sp.eye(2,dtype=int)
     op_list=[I2]*(L-1)
-    kron_list=lambda x: reduce(sp.kron,x)
+    
     rs=sp.eye(2**L,dtype=int)
     idx_list=np.arange(L-1)[::-1] if left else np.arange(L-1)
     for i in idx_list:
@@ -146,3 +221,84 @@ def T(L,left=True):
         rs=rs@kron_list(op_list)
         op_list[i]=I2
     return rs
+
+def U(n,rng=None):
+    '''Generate Haar random U(n)'''
+    if rng is None:
+        rng=np.random.default_rng(None)
+    re=rng.normal(size=(n,n))
+    im=rng.normal(size=(n,n))
+    z=re+1j*im
+    Q,R=np.linalg.qr(z)
+    r_diag=np.diag(R)
+    Lambda=np.diag(r_diag/np.abs(r_diag))
+    Q=Q@Lambda
+    # R=Lambda.conj()@R
+    return Q
+
+def S(L,rng):
+    '''construct quantum scrambler, Haar random U(4) applies to the last two digits only'''
+    I2=sp.eye(2,dtype=int)
+    U_4=U(4,rng)
+    op_list=[I2]*(L-2)+[U_4]
+    return kron_list(op_list)
+
+@lru_cache(maxsize=None)
+def P(L,n,pos=None):
+    '''projection to n=0 or 1'''
+    if pos is None:
+        pos=L-1
+    PL=sp.diags([1-n,n])
+    I2=sp.eye(2,dtype=int)
+    op_list=[I2]*(L)
+    op_list[pos]=PL
+    return kron_list(op_list)
+
+@lru_cache(maxsize=None)
+def XL(L):
+    '''X_L for the last digits'''
+    sigma_x=sp.csr_matrix([[0,1],[1,0]])
+    I2=sp.eye(2,dtype=int)
+    op_list=[I2]*(L-1)+[sigma_x]
+    return kron_list(op_list)
+
+@lru_cache(maxsize=None)
+def adder(L):
+    bin_1_6=dec2bin(Fraction(1,6), L)
+    bin_1_6[-1]=1
+    bin_1_3=dec2bin(Fraction(1,3), L)
+    int_1_6=int(''.join(map(str,bin_1_6)),2)
+    int_1_3=int(''.join(map(str,bin_1_3)),2)
+    old_idx=np.arange(2**L)
+    adder_idx=np.array([int_1_6]*2**(L-2)+[int_1_3]*2**(L-2)+[0]*2**(L-2)+[0]*2**(L-2))
+    new_idx=old_idx+adder_idx
+    ones=np.ones(2**L)
+    return sp.coo_matrix((ones,(new_idx,old_idx)))
+
+def normalize(vec):
+    # normalization after projection
+    norm=np.sqrt(vec.conj()@vec)
+    assert norm != 0 , f'Cannot normalize: norm is zero {norm}'
+    return vec/norm
+
+@lru_cache(maxsize=None)
+def ZZ(L):
+    '''Z |0> = -|0>
+    Z |1> = |1>'''
+    sigma_Z= sp.csr_matrix([[-1,0],[0,1]],dtype=int)
+    I2=sp.eye(2,dtype=int)
+    op_list=[I2]*(L)
+    rs=0
+    for i in range(L):
+        # a little dumb here, swap can be used but anyway, profiling is a later step
+        # another simplied way is to note basis is the eigenvector of ZZ
+        op_list[i],op_list[(i+1)%L]=sigma_Z,sigma_Z
+        rs=rs+kron_list(op_list)
+        op_list[i],op_list[(i+1)%L]=I2,I2
+    return -rs/L
+
+@lru_cache(maxsize=None)
+def bin_pad(x,L):
+    '''convert a int to binary form with 0 padding to the left'''
+    return (bin(x)[2:]).rjust(L,'0')
+

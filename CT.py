@@ -161,12 +161,51 @@ class CT_quantum:
             self.vec_history=[vec]
             self.op_history=[op]
     
-    def order_parameter(self):
-        vec=self.vec_history[-1].copy()
+    def order_parameter(self,vec=None):
+        if vec is None:
+            vec=self.vec_history[-1].copy()
         O=vec.conj()@ZZ(self.L)@vec
 
         assert np.abs(O.imag)<self._eps, f'<O> is not real ({val}) '
         return O.real
+
+    def von_Neumann_entropy(self,subregion,vec=None):
+        '''`subregion` the spatial dof'''
+        if vec is None:
+            vec=self.vec_history[-1].copy()
+        subregion=np.array(subregion)
+        rho=construct_density_matrix(vec)
+        rho_reduce=partial_trace(rho,self.L,subregion)
+        return minus_rho_log_rho(rho_reduce)
+
+    def half_system_entanglement_entropy(self,vec=None):
+        '''\sum_{i=0..L/2-1}S_([i,i+L/2)) / (L/2)'''
+        if vec is None:
+            vec=self.vec_history[-1].copy()
+        S_A=[self.von_Neumann_entropy(np.arange(i,i+self.L//2),vec) for i in range(self.L//2)]
+        return np.mean(S_A)
+
+def construct_density_matrix(vec):
+    return np.tensordot(vec.conj(),vec,axes=0)
+def partial_trace( rho, L, subregion):
+    '''for a density matrix rho, of a system size L, (dim: 2**L), trace out the dof in `subregion`'''
+    assert L<=16, f'L ({L}) cannot be longer than 16 because np.ndarray is restricted to 32 rank'
+    rho_tensor=rho.reshape((2,)*(2*L))
+    idx_list=np.arange(2*L)
+    idx_list[subregion+L]=idx_list[subregion]
+    mask=np.ones(2*L,dtype=bool)
+    mask[subregion]=False
+    mask[subregion+L]=False
+    out_idx_list=idx_list[mask]
+    rho_reduce=np.einsum(rho_tensor,idx_list,out_idx_list).reshape((2**(L-subregion.shape[0]),2**(L-subregion.shape[0])))
+    return rho_reduce
+
+def minus_rho_log_rho(rho):
+    vals=np.linalg.eigvalsh(rho)
+    vals_positive=vals[vals>0]
+    return np.sum(-np.log(vals_positive)*vals_positive)
+
+
 
         
 

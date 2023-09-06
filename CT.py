@@ -160,6 +160,61 @@ class CT_quantum:
         else:
             self.vec_history=[vec]
             self.op_history=[op]
+
+    def random_control_2(self,p_ctrl,p_proj):
+        '''the competition between chaotic and random, where the projection can only be applied after the unitary'''
+        vec=self.vec_history[-1].copy()
+        p={}
+        p[("L",0)]= vec.conj()@P(self.L,n=0,pos=self.L-1)@vec
+        p[("L",1)] = vec.conj()@P(self.L,n=1,pos=self.L-1)@vec
+        for key, val in p.items():
+            assert np.abs(val.imag)<self._eps, f'probability for {key} is not real {val}'
+            p[key]=val.real
+
+        pool = ["C0","C1","chaotic"]
+        probabilities = [p_ctrl * p[("L",0)], p_ctrl * p[("L",1)],  1- p_ctrl]
+
+        op = self.rng.choice(pool,p=probabilities)
+
+        op_list= {"C0":partial(self.control_map,bL=0),
+                  "C1":partial(self.control_map,bL=1),
+                  "PL0":partial(self.projection_map,pos=self.L-1,n=0),
+                  "PL1":partial(self.projection_map,pos=self.L-1,n=1),
+                  "PL-10":partial(self.projection_map,pos=self.L-2,n=0),
+                  "PL-11":partial(self.projection_map,pos=self.L-2,n=1),
+                  "chaotic":self.Bernoulli_map,
+                  "I":lambda x:x
+                  }
+        vec=op_list[op](vec)
+        if self.history:
+            self.vec_history.append(vec)
+            self.op_history.append(op)
+        else:
+            self.vec_history=[vec]
+            self.op_history=[op]
+
+        if op=="chaotic":
+            p={}
+            p[("L",0)]= vec.conj()@P(self.L,n=0,pos=self.L-1)@vec
+            p[("L",1)] = vec.conj()@P(self.L,n=1,pos=self.L-1)@vec
+            p[("L-1",0)] = vec.conj()@P(self.L,n=0,pos=self.L-2)@vec
+            p[("L-1",1)] = vec.conj()@P(self.L,n=1,pos=self.L-2)@vec
+            for key, val in p.items():
+                assert np.abs(val.imag)<self._eps, f'probability for {key} is not real {val}'
+                p[key]=val.real
+            pool_2=["I","PL0","PL1","PL-10","PL-11",]
+            probabilities_2=[1-2*p_proj, p_proj * p[("L",0)], p_proj *  p[("L",1)], p_proj * p[("L-1",0)], p_proj * p[("L-1",1)]]
+
+            op_2 = self.rng.choice(pool_2,p=probabilities_2)
+            vec=op_list[op_2](vec)
+
+            if self.history:
+                self.vec_history.append(vec)
+                self.op_history.append(op_2)
+            else:
+                self.vec_history=[vec]
+                self.op_history=[op_2]
+
     
     def order_parameter(self,vec=None):
         if vec is None:
@@ -205,9 +260,6 @@ def minus_rho_log_rho(rho):
     vals_positive=vals[vals>0]
     return np.sum(-np.log(vals_positive)*vals_positive)
 
-
-
-        
 
 def dec2bin(x,L):
     '''

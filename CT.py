@@ -18,7 +18,8 @@ class CT_classical:
         self.op_history=[]  # control: true, Bernoulli: false
         self.binary=self._initialize_binary([Fraction(1,6),Fraction(1,3)])
 
-        self.vec=self._initialize_vector()
+        self.vec=self._initi
+        alize_vector()
         self.vec_history=[self.vec]
     def _initialize_vector(self):
         '''save using an array of L'''
@@ -166,7 +167,7 @@ class CT_quantum:
         Notation: L-1 is the last digits'''
         vec=self.vec_history[-1].copy()
         
-        p= get_prob([self.L-1],vec,self.L)
+        p= self.get_prob([self.L-1],vec)
 
         pool = ["C0","C1","chaotic"]
         probabilities = [p_ctrl * p[(self.L-1,0)], p_ctrl * p[(self.L-1,1)],  1- p_ctrl]
@@ -175,10 +176,10 @@ class CT_quantum:
 
         op_list= {"C0":partial(self.control_map,bL=0),
                   "C1":partial(self.control_map,bL=1),
-                  "PL-10":partial(self.projection_map,pos=self.L-1,n=0),
-                  "PL-11":partial(self.projection_map,pos=self.L-1,n=1),
-                  "PL-20":partial(self.projection_map,pos=self.L-2,n=0),
-                  "PL-21":partial(self.projection_map,pos=self.L-2,n=1),
+                  f"P{self.L-1}0":partial(self.projection_map,pos=self.L-1,n=0),
+                  f"P{self.L-1}1":partial(self.projection_map,pos=self.L-1,n=1),
+                  f"P{self.L-2}0":partial(self.projection_map,pos=self.L-2,n=0),
+                  f"P{self.L-2}1":partial(self.projection_map,pos=self.L-2,n=1),
                   "chaotic":self.Bernoulli_map,
                   "I":lambda x:x
                   }
@@ -187,9 +188,9 @@ class CT_quantum:
 
         if op=="chaotic":
             for pos in [self.L-1,self.L-2]:
-                p_2=get_prob(L_list=[pos], vec, self.L)
+                p_2=self.get_prob([pos], vec)
                 pool_2=["I",f"P{pos}0",f"P{pos}1"]
-                probabilities_2=[1-p_proj, p_proj * p[(f"{pos}",0)], p_proj *  p[(f"{pos}",1)],]
+                probabilities_2=[1-p_proj, p_proj * p_2[(pos,0)], p_proj *  p_2[(pos,1)],]
                 op_2 = self.rng.choice(pool_2,p=probabilities_2)
                 vec=op_list[op_2](vec)
                 self.update_history(vec,op_2)
@@ -219,12 +220,13 @@ class CT_quantum:
             vec=self.vec_history[-1].copy()
         S_A=[self.von_Neumann_entropy(np.arange(i,i+self.L//2),vec) for i in range(self.L//2)]
         return np.mean(S_A)
-    def update_history(vec=None,op=None):
+
+    def update_history(self,vec=None,op=None):
         if self.history:
             if vec is not None:
                 self.vec_history.append(vec)
             if op is not None:
-                op_history.append(op)
+                self.op_history.append(op)
         else:
             if vec is not None:
                 self.vec_history=[vec]
@@ -234,13 +236,13 @@ class CT_quantum:
 
 
 
-def get_prob(L_list,vec,L):
-    '''get the probability of measuring 0 at site L_list'''
-    P={(pos,n):vec.conj()@P(L,n=n,pos=pos)@vec for pos in L_list for n in [0,1]}
-    for key, val in p.items():
-        assert np.abs(val.imag)<self._eps, f'probability for {key} is not real {val}'
-        p[key]=val.real
-    return P
+    def get_prob(self,L_list,vec):
+        '''get the probability of measuring 0 at site L_list'''
+        prob={(pos,n):vec.conj()@P(self.L,n=n,pos=pos)@vec for pos in L_list for n in [0,1]}
+        for key, val in prob.items():
+            assert np.abs(val.imag)<self._eps, f'probability for {key} is not real {val}'
+            prob[key]=val.real
+        return prob
     
 
 def construct_density_matrix(vec):

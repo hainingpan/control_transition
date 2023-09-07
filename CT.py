@@ -233,7 +233,7 @@ class CT_quantum:
         not_subregion=[i for i in range(self.L) if i not in subregion]
         vec_tensor_T=vec_tensor.transpose(np.hstack([subregion , not_subregion]))
         _,S,_=np.linalg.svd(vec_tensor_T.reshape((2**len(subregion),2**len(not_subregion))))
-        S_pos=S[S>0]
+        S_pos=S[S>1e-18]
         return -np.sum(np.log(S_pos**2)*S_pos**2)
 
 

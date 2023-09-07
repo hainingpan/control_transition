@@ -88,24 +88,30 @@ class CT_quantum:
     def _initialize_vector(self):
         '''save using an array of 2^L'''
         vec_int=int(''.join(map(str,dec2bin(self.x0,self.L))),2)
-        vec=np.zeros((2**self.L))
+        vec=np.zeros((2**self.L,),dtype=complex)
+        # vec=sp.csr_matrix((2**self.L,1),dtype=complex)
         vec[vec_int]=1
         return vec
 
     def Bernoulli_map(self,vec):
-        vec=T(self.L,left=True)@vec
-        vec=S(self.L,rng=self.rng)@vec
+        # vec=T(self.L,left=True)@vec
+        vec=self.T_tensor(vec,left=True)
+        # vec=S(self.L,rng=self.rng)@vec
+        vec=self.S_tensor(vec,rng=self.rng)
         return vec
     
     def control_map(self,vec,bL):
         '''control map depends on the outcome of the measurement of bL'''
         # projection on the last bits
-        vec=P(self.L,bL)@vec
+        # P_cached=P(self.L,bL)
+        # vec=P_cached@vec
+        vec=self.P_tensor(vec,bL)
         if bL==1:
-            vec=XL(self.L)@vec
+            vec=self.XL_tensor(vec)
         vec=normalize(vec)
         # right shift 
-        vec=T(self.L,left=False)@vec
+        # vec=T(self.L,left=False)@vec
+        vec=self.T_tensor(vec,left=False)
 
         assert np.abs(vec[vec.shape[0]//2:]).sum() == 0, f'first qubit is not zero ({np.abs(vec[vec.shape[0]//2:]).sum()}) after right shift '
 
@@ -117,7 +123,8 @@ class CT_quantum:
     def projection_map(self,vec,pos,n):
         '''projection to `pos` with outcome of `n`
         note that here is 0-index, and pos=L-1 is the last bit'''
-        vec=P(self.L,n=n,pos=pos)@vec
+        # vec=P(self.L,n=n,pos=pos)@vec
+        vec=self.P_tensor(vec,n,pos)
         vec=normalize(vec)
 
         return vec
@@ -167,7 +174,7 @@ class CT_quantum:
         Notation: L-1 is the last digits'''
         vec=self.vec_history[-1].copy()
         
-        p= self.get_prob([self.L-1],vec)
+        p= self.get_prob_tensor([self.L-1],vec)
 
         pool = ["C0","C1","chaotic"]
         probabilities = [p_ctrl * p[(self.L-1,0)], p_ctrl * p[(self.L-1,1)],  1- p_ctrl]
@@ -188,7 +195,7 @@ class CT_quantum:
 
         if op=="chaotic":
             for pos in [self.L-1,self.L-2]:
-                p_2=self.get_prob([pos], vec)
+                p_2=self.get_prob_tensor([pos], vec)
                 pool_2=["I",f"P{pos}0",f"P{pos}1"]
                 probabilities_2=[1-p_proj, p_proj * p_2[(pos,0)], p_proj *  p_2[(pos,1)],]
                 op_2 = self.rng.choice(pool_2,p=probabilities_2)
@@ -200,7 +207,9 @@ class CT_quantum:
     def order_parameter(self,vec=None):
         if vec is None:
             vec=self.vec_history[-1].copy()
-        O=vec.conj()@ZZ(self.L)@vec
+        # O=(vec.conj().T@ZZ(self.L)@vec).toarray()[0,0]
+        # O=(vec.conj().T@ZZ(self.L)@vec)
+        O=self.ZZ_tensor(vec)
 
         assert np.abs(O.imag)<self._eps, f'<O> is not real ({val}) '
         return O.real
@@ -213,13 +222,29 @@ class CT_quantum:
         rho=construct_density_matrix(vec)
         rho_reduce=partial_trace(rho,self.L,subregion)
         return minus_rho_log_rho(rho_reduce)
+    
+    def von_Neumann_entropy_pure(self,subregion,vec=None):
+        '''`subregion` the spatial dof
+        this version uses Schmidt decomposition, which is easier for pure state'''
+        if vec is None:
+            vec=self.vec_history[-1].copy()
+        vec_tensor=vec.reshape((2,)*(self.L))
+        subregion=list(subregion)
+        not_subregion=[i for i in range(self.L) if i not in subregion]
+        vec_tensor_T=vec_tensor.transpose(np.hstack([subregion , not_subregion]))
+        _,S,_=np.linalg.svd(vec_tensor_T.reshape((2**len(subregion),2**len(not_subregion))))
+        S_pos=S[S>0]
+        return -np.sum(np.log(S_pos**2)*S_pos**2)
+
 
     def half_system_entanglement_entropy(self,vec=None):
         '''\sum_{i=0..L/2-1}S_([i,i+L/2)) / (L/2)'''
         if vec is None:
             vec=self.vec_history[-1].copy()
-        S_A=[self.von_Neumann_entropy(np.arange(i,i+self.L//2),vec) for i in range(self.L//2)]
+        S_A=[self.von_Neumann_entropy_pure(np.arange(i,i+self.L//2),vec) for i in range(self.L//2)]
         return np.mean(S_A)
+    
+
 
     def update_history(self,vec=None,op=None):
         if self.history:
@@ -238,15 +263,86 @@ class CT_quantum:
 
     def get_prob(self,L_list,vec):
         '''get the probability of measuring 0 at site L_list'''
-        prob={(pos,n):vec.conj()@P(self.L,n=n,pos=pos)@vec for pos in L_list for n in [0,1]}
+        # prob={(pos,n):(vec.conj().T@P(self.L,n=n,pos=pos)@vec).toarray()[0,0] for pos in L_list for n in [0,1]}
+        prob={(pos,n):(vec.conj().T@P(self.L,n=n,pos=pos)@vec) for pos in L_list for n in [0,1]}
         for key, val in prob.items():
             assert np.abs(val.imag)<self._eps, f'probability for {key} is not real {val}'
             prob[key]=val.real
         return prob
     
+    def get_prob_tensor(self,L_list,vec):
+        prob={(pos,0):self.inner_prob(vec,pos) for pos in L_list}
+        prob.update({(pos,1):1-prob[(pos,0)] for pos in L_list})
+        return prob
+
+
+
+    def inner_prob(self,vec,pos):
+        '''probability of `vec` of measuring 0 at L
+        convert the vector to tensor (2,2,..), take about the specific pos-th index, and flatten to calculate the inner product'''
+        vec_tensor=vec.reshape((2,)*self.L)
+        idx_list=[slice(None)]*self.L
+        idx_list[pos]=0
+        vec_0=vec_tensor[tuple(idx_list)].flatten()
+        inner_prod=vec_0.conj()@vec_0
+        assert np.abs(inner_prod.imag)<self._eps, f'probability for outcome 0 is not real {inner_prod}'
+        inner_prod=inner_prod.real
+        assert inner_prod>-self._eps, f'probability for outcome 0 is not positive {inner_prod}'
+        inner_prod=max(0,inner_prod)
+        assert inner_prod<1+self._eps, f'probability for outcome 1 is not smaller than 1 {inner_prod}'
+        inner_prod=min(inner_prod,1)
+        return inner_prod
+
+    def XL_tensor(self,vec):
+        '''directly swap 0 and 1'''
+        vec_tensor=vec.reshape((2,)*self.L)[...,[1,0]]
+        return vec_tensor.flatten()
+
+    def P_tensor(self,vec,n,pos=None):
+        '''directly set zero at tensor[...,0] =0 for n==1'''
+        vec_tensor=vec.reshape((2,)*self.L)
+        if pos is None or pos==self.L-1:
+            # project the last site
+            vec_tensor[...,1-n]=0
+        if pos == self.L-2:
+            vec_tensor[...,1-n,:]=0
+        return vec_tensor.flatten()
+
+    def T_tensor(self,vec,left=True):
+        '''directly transpose the index of tensor'''
+        vec_tensor=vec.reshape((2,)*self.L)
+        idx_list=np.arange(self.L)
+        shift=-1 if left else 1
+        if left:
+            idx_list_2=list(range(1,self.L))+[0]
+        else:
+            idx_list_2=[self.L-1]+list(range(self.L-1))
+        return vec_tensor.transpose(idx_list_2).flatten()
+
+    def S_tensor(self,vec,rng):
+        '''directly convert to tensor and apply to the last two indices'''
+        U_4=U(4,rng)
+        vec_tensor=vec.reshape((2**(self.L-2),2**2)).T  
+        return (U_4@vec_tensor).T.flatten()
+
+    def ZZ_tensor(self,vec):
+        vec_tensor=vec.reshape((2,)*self.L)
+        rs=0
+        for i in range(self.L):
+            for zi in range(2):
+                for zj in range(2):
+                    idx_list=[slice(None)]*self.L
+                    idx_list[i],idx_list[(i+1)%self.L]=zi,zj
+                    exp=1-2*(zi^zj)
+                    vec_i=vec_tensor[tuple(idx_list)].flatten()
+                    rs+=vec_i.conj()@vec_i*exp
+        return -rs/self.L
+            
+    
 
 def construct_density_matrix(vec):
     return np.tensordot(vec.conj(),vec,axes=0)
+    
 def partial_trace( rho, L, subregion):
     '''for a density matrix rho, of a system size L, (dim: 2**L), trace out the dof in `subregion`'''
     assert L<=16, f'L ({L}) cannot be longer than 16 because np.ndarray is restricted to 32 rank'
@@ -299,27 +395,29 @@ def add_binary(vec1,vec2):
 
 kron_list=lambda x: reduce(sp.kron,x)
 
-@lru_cache(maxsize=None)
-def T(L,left=True):
-    '''
-    circular right shift the computational basis `vec` : 
-    b_1 b_2 ... b_L -> right shift -> b_L b_1 ... b_{L-1}
-    b_1 b_2 ... b_L -> left shift ->  b_2 b_3... b_{L-1} b_L
-    '''
-    SWAP=sp.csr_array([[1,0,0,0],[0,0,1,0],[0,1,0,0],[0,0,0,1]],dtype=int)
-    I2=sp.eye(2,dtype=int)
-    op_list=[I2]*(L-1)
+# @lru_cache(maxsize=None)
+# def T(L,left=True):
+#     '''
+#     circular right shift the computational basis `vec` : 
+#     b_0 b_1 ... b_{L-1} -> right shift -> b_{L-1} b_0 ... b_{L-2}
+#     b_0 b_1 ... b_{L-1} -> left shift ->  b_1 b_2... b_{L-2} b_{L-1}
+#     Return: sparse matrix
+#     '''
+#     SWAP=sp.csr_array([[1,0,0,0],[0,0,1,0],[0,1,0,0],[0,0,0,1]],dtype=int)
+#     I2=sp.eye(2,dtype=int)
+#     op_list=[I2]*(L-1)
     
-    rs=sp.eye(2**L,dtype=int)
-    idx_list=np.arange(L-1)[::-1] if left else np.arange(L-1)
-    for i in idx_list:
-        op_list[i]=SWAP
-        rs=rs@kron_list(op_list)
-        op_list[i]=I2
-    return rs
+#     rs=sp.eye(2**L,dtype=int)
+#     idx_list=np.arange(L-1)[::-1] if left else np.arange(L-1)
+#     for i in idx_list:
+#         op_list[i]=SWAP
+#         rs=rs@kron_list(op_list)
+#         op_list[i]=I2
+#     return rs
 
 def U(n,rng=None):
-    '''Generate Haar random U(n)'''
+    '''Generate Haar random U(n)
+    Return: dense matrix of Haar random U(4) `Q`'''
     if rng is None:
         rng=np.random.default_rng(None)
     re=rng.normal(size=(n,n))
@@ -333,30 +431,36 @@ def U(n,rng=None):
     return Q
 
 def S(L,rng):
-    '''construct quantum scrambler, Haar random U(4) applies to the last two digits only'''
-    I2=sp.eye(2,dtype=int)
+    '''construct quantum scrambler, Haar random U(4) applies to the last two digits only
+    Return : sparse matrix'''
+    # I2=sp.eye(2,dtype=int)
+    # U_4=U(4,rng)
+    # op_list=[I2]*(L-2)+[U_4]
+    # return kron_list(op_list)
+
+    I2=sp.eye(2**(L-2))
     U_4=U(4,rng)
-    op_list=[I2]*(L-2)+[U_4]
-    return kron_list(op_list)
+    return sp.kron(I2,U_4)
 
-@lru_cache(maxsize=None)
-def P(L,n,pos=None):
-    '''projection to n=0 or 1'''
-    if pos is None:
-        pos=L-1
-    PL=sp.diags([1-n,n])
-    I2=sp.eye(2,dtype=int)
-    op_list=[I2]*(L)
-    op_list[pos]=PL
-    return kron_list(op_list)
+# @lru_cache(maxsize=None)
+# def P(L,n,pos=None):
+#     '''projection to n=0 or 1
+#     Return : sparse matrix'''
+#     if pos is None:
+#         pos=L-1
+#     PL=sp.diags([1-n,n])
+#     I2=sp.eye(2,dtype=int)
+#     op_list=[I2]*(L)
+#     op_list[pos]=PL
+#     return kron_list(op_list)
 
-@lru_cache(maxsize=None)
-def XL(L):
-    '''X_L for the last digits'''
-    sigma_x=sp.csr_matrix([[0,1],[1,0]])
-    I2=sp.eye(2,dtype=int)
-    op_list=[I2]*(L-1)+[sigma_x]
-    return kron_list(op_list)
+# @lru_cache(maxsize=None)
+# def XL(L):
+#     '''X_L for the last digits'''
+#     sigma_x=sp.csr_matrix([[0,1],[1,0]],dtype=int)
+#     I2=sp.eye(2,dtype=int).tocsr()
+#     op_list=[I2]*(L-1)+[sigma_x]
+#     return kron_list(op_list)
 
 @lru_cache(maxsize=None)
 def adder(L):
@@ -373,28 +477,30 @@ def adder(L):
 
 def normalize(vec):
     # normalization after projection
-    norm=np.sqrt(vec.conj()@vec)
+    # norm=np.sqrt(vec.conj().T@vec).toarray()[0,0]
+    norm=np.sqrt(vec.conj().T@vec)
     assert norm != 0 , f'Cannot normalize: norm is zero {norm}'
     return vec/norm
 
-@lru_cache(maxsize=None)
-def ZZ(L):
-    '''Z |0> = -|0>
-    Z |1> = |1>'''
-    sigma_Z= sp.csr_matrix([[-1,0],[0,1]],dtype=int)
-    I2=sp.eye(2,dtype=int)
-    op_list=[I2]*(L)
-    rs=0
-    for i in range(L):
-        # a little dumb here, swap can be used but anyway, profiling is a later step
-        # another simplied way is to note basis is the eigenvector of ZZ
-        op_list[i],op_list[(i+1)%L]=sigma_Z,sigma_Z
-        rs=rs+kron_list(op_list)
-        op_list[i],op_list[(i+1)%L]=I2,I2
-    return -rs/L
+# @lru_cache(maxsize=None)
+# def ZZ(L):
+#     '''Z |0> = -|0>
+#     Z |1> = |1>'''
+#     sigma_Z= sp.csr_matrix([[-1,0],[0,1]],dtype=int)
+#     I2=sp.eye(2,dtype=int)
+#     op_list=[I2]*(L)
+#     rs=0
+#     for i in range(L):
+#         # a little dumb here, swap can be used but anyway, profiling is a later step
+#         # another simplied way is to note basis is the eigenvector of ZZ
+#         op_list[i],op_list[(i+1)%L]=sigma_Z,sigma_Z
+#         rs=rs+kron_list(op_list)
+#         op_list[i],op_list[(i+1)%L]=I2,I2
+#     return -rs/L
 
-@lru_cache(maxsize=None)
-def bin_pad(x,L):
-    '''convert a int to binary form with 0 padding to the left'''
-    return (bin(x)[2:]).rjust(L,'0')
+
+# @lru_cache(maxsize=None)
+# def bin_pad(x,L):
+#     '''convert a int to binary form with 0 padding to the left'''
+#     return (bin(x)[2:]).rjust(L,'0')
 

@@ -17,9 +17,9 @@ class CT_classical:
         self.x0=x0
         self.op_history=[]  # control: true, Bernoulli: false
         self.binary=self._initialize_binary([Fraction(1,6),Fraction(1,3)])
+        self.binary[Fraction(1,6)][-1]=1
 
-        self.vec=self._initi
-        alize_vector()
+        self.vec=self._initialize_vector()
         self.vec_history=[self.vec]
     def _initialize_vector(self):
         '''save using an array of L'''
@@ -389,9 +389,14 @@ def add_binary(vec1,vec2):
     
     vec1_sum=list(map(int,list(vec1_sum)))
     if len(vec1_sum)>(vec1.shape[0]):
-        return np.array(vec1_sum[1:]) #drop carry
+        vec1_sum = np.array(vec1_sum[1:]) #drop carry
     else:
-        return np.array(vec1_sum)
+        vec1_sum = np.array(vec1_sum)
+
+    if np.array_equal(vec1_sum[[0,-3,-1]],np.array([1,0,1])) or np.array_equal(vec1_sum[[0,-3,-1]],np.array([0,1,0])):
+        vec1_sum[-2]=1-vec1_sum[-2]
+
+    return (vec1_sum)
 
 kron_list=lambda x: reduce(sp.kron,x)
 
@@ -464,16 +469,23 @@ def S(L,rng):
 
 @lru_cache(maxsize=None)
 def adder(L):
+    ''' This is not a full adder, which assume the leading digit in the input bitstring is zero (because of the T^{-1}R_L, the leading bit should always be zero).'''
     bin_1_6=dec2bin(Fraction(1,6), L)
     bin_1_6[-1]=1
     bin_1_3=dec2bin(Fraction(1,3), L)
     int_1_6=int(''.join(map(str,bin_1_6)),2)
     int_1_3=int(''.join(map(str,bin_1_3)),2)
-    old_idx=np.arange(2**L)
-    adder_idx=np.array([int_1_6]*2**(L-2)+[int_1_3]*2**(L-2)+[0]*2**(L-2)+[0]*2**(L-2))
+    old_idx=np.arange(2**(L-1))
+    adder_idx=np.array([int_1_6]*2**(L-2)+[int_1_3]*2**(L-2))    
     new_idx=old_idx+adder_idx
-    ones=np.ones(2**L)
-    return sp.coo_matrix((ones,(new_idx,old_idx)))
+    # handle the extra attractors, if 1..0x1, then 1..0(1-x)1, if 0..1x0, then 0..1(1-x)0 [which shouldn enter in this branch..]
+    mask_1=(new_idx&(1<<L-1) == (1<<L-1)) & (new_idx&(1<<2) == (0)) & (new_idx&(1) == (1))
+    mask_2=(new_idx&(1<<L-1) == (0)) & (new_idx&(1<<2) == (1<<2)) & (new_idx&(1) == (0))
+
+    new_idx[mask_1+mask_2]=new_idx[mask_1+mask_2]^(0b10)
+
+    ones=np.ones(2**(L-1))
+    return sp.coo_matrix((ones,(new_idx,old_idx)),shape=(2**L,2**L))
 
 def normalize(vec):
     # normalization after projection
@@ -499,8 +511,8 @@ def normalize(vec):
 #     return -rs/L
 
 
-# @lru_cache(maxsize=None)
-# def bin_pad(x,L):
-#     '''convert a int to binary form with 0 padding to the left'''
-#     return (bin(x)[2:]).rjust(L,'0')
+@lru_cache(maxsize=None)
+def bin_pad(x,L):
+    '''convert a int to binary form with 0 padding to the left'''
+    return (bin(x)[2:]).rjust(L,'0')
 

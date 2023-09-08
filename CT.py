@@ -241,8 +241,10 @@ class CT_quantum:
         '''\sum_{i=0..L/2-1}S_([i,i+L/2)) / (L/2)'''
         if vec is None:
             vec=self.vec_history[-1].copy()
-        S_A=[self.von_Neumann_entropy_pure(np.arange(i,i+self.L//2),vec) for i in range(self.L//2)]
-        return np.mean(S_A)
+        # S_A=[self.von_Neumann_entropy_pure(np.arange(i,i+self.L//2),vec) for i in range(self.L//2)]
+        # return np.mean(S_A)
+        S_A=self.von_Neumann_entropy_pure(np.arange(self.L//2),vec)
+        return S_A
     
 
 

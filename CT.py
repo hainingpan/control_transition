@@ -72,25 +72,32 @@ class CT_classical:
         return -vec_Z@vec_Z_shift/self.L
 
 class CT_quantum:
-    
-    def __init__(self,L,history=False,seed=None,x0=None,_eps=1e-10):
+    def __init__(self,L,history=False,seed=None,x0=None,_eps=1e-10, ancilla=False):
         '''save using an array of 2^L'''
-        self.L=L
+        self.L=L # physical L, excluding ancilla
+        self.L_T=L+1 if ancilla else L # tensor L, ancilla
         self.history=history
         self.rng=np.random.default_rng(seed)
         self.x0=self.rng.random() if x0 is None else x0
         self.op_history=[]  # control: true, Bernoulli: false
+        self.ancilla=ancilla
         self.vec=self._initialize_vector()
         self.vec_history=[self.vec]
         self._eps=_eps
         # self.T={'L':T(self.L,left=True),'R':T(self.L,left=False)}
     
     def _initialize_vector(self):
-        '''save using an array of 2^L'''
-        vec_int=int(''.join(map(str,dec2bin(self.x0,self.L))),2)
-        vec=np.zeros((2**self.L,),dtype=complex)
-        # vec=sp.csr_matrix((2**self.L,1),dtype=complex)
-        vec[vec_int]=1
+        '''save using an array of 2^L
+        if ancilla qubit: it should be put to the last qubit, positioned as L, entangled with L-1'''
+        if not self.ancilla:
+            vec_int=int(''.join(map(str,dec2bin(self.x0,self.L))),2)
+            vec=np.zeros((2**self.L,),dtype=complex)
+            vec[vec_int]=1
+        else:
+            # Simply create a GHZ state, (|0...0> + |1...1> )/sqrt(2)
+            vec=np.zeros((2**(self.L+1),),dtype=complex)
+            vec[0]=1/np.sqrt(2)
+            vec[-1]=1/np.sqrt(2)
         return vec
 
     def Bernoulli_map(self,vec):
@@ -116,7 +123,10 @@ class CT_quantum:
         assert np.abs(vec[vec.shape[0]//2:]).sum() == 0, f'first qubit is not zero ({np.abs(vec[vec.shape[0]//2:]).sum()}) after right shift '
 
         # Adder
-        vec=adder(self.L)@vec
+        if not self.ancilla:
+            vec=adder(self.L)@vec
+        else:
+            vec=(adder(self.L)@vec.reshape((2**self.L,2))).flatten()
         
         return vec
 
@@ -133,6 +143,7 @@ class CT_quantum:
         '''
         p_ctrl: the control probability
         p_proj: the projection probability
+        This is not the desired protocol, too strong measurement.
         '''
         vec=self.vec_history[-1].copy()
 
@@ -220,7 +231,7 @@ class CT_quantum:
             vec=self.vec_history[-1].copy()
         subregion=np.array(subregion)
         rho=construct_density_matrix(vec)
-        rho_reduce=partial_trace(rho,self.L,subregion)
+        rho_reduce=partial_trace(rho,self.L_T,subregion)
         return minus_rho_log_rho(rho_reduce)
     
     def von_Neumann_entropy_pure(self,subregion,vec=None):
@@ -228,9 +239,9 @@ class CT_quantum:
         this version uses Schmidt decomposition, which is easier for pure state'''
         if vec is None:
             vec=self.vec_history[-1].copy()
-        vec_tensor=vec.reshape((2,)*(self.L))
+        vec_tensor=vec.reshape((2,)*(self.L_T))
         subregion=list(subregion)
-        not_subregion=[i for i in range(self.L) if i not in subregion]
+        not_subregion=[i for i in range(self.L_T) if i not in subregion]
         vec_tensor_T=vec_tensor.transpose(np.hstack([subregion , not_subregion]))
         _,S,_=np.linalg.svd(vec_tensor_T.reshape((2**len(subregion),2**len(not_subregion))))
         S_pos=S[S>1e-18]
@@ -242,7 +253,7 @@ class CT_quantum:
         if vec is None:
             vec=self.vec_history[-1].copy()
         # S_A=[self.von_Neumann_entropy_pure(np.arange(i,i+self.L//2),vec) for i in range(self.L//2)]
-        # return np.mean(S_A)
+        # return (S_A)
         S_A=self.von_Neumann_entropy_pure(np.arange(self.L//2),vec)
         return S_A
     
@@ -282,8 +293,8 @@ class CT_quantum:
     def inner_prob(self,vec,pos):
         '''probability of `vec` of measuring 0 at L
         convert the vector to tensor (2,2,..), take about the specific pos-th index, and flatten to calculate the inner product'''
-        vec_tensor=vec.reshape((2,)*self.L)
-        idx_list=[slice(None)]*self.L
+        vec_tensor=vec.reshape((2,)*self.L_T)
+        idx_list=[slice(None)]*self.L_T
         idx_list[pos]=0
         vec_0=vec_tensor[tuple(idx_list)].flatten()
         inner_prod=vec_0.conj()@vec_0
@@ -297,45 +308,61 @@ class CT_quantum:
 
     def XL_tensor(self,vec):
         '''directly swap 0 and 1'''
-        vec_tensor=vec.reshape((2,)*self.L)[...,[1,0]]
+        if not self.ancilla:
+            vec_tensor=vec.reshape((2,)*self.L_T)[...,[1,0]]
+        else:
+            vec_tensor=vec.reshape((2,)*self.L_T)[...,[1,0],:]
         return vec_tensor.flatten()
 
     def P_tensor(self,vec,n,pos=None):
-        '''directly set zero at tensor[...,0] =0 for n==1'''
-        vec_tensor=vec.reshape((2,)*self.L)
+        '''directly set zero at tensor[...,0] =0 for n==1 and tensor[...,1] =0 for n==0'''
+        vec_tensor=vec.reshape((2,)*self.L_T)
         if pos is None or pos==self.L-1:
             # project the last site
-            vec_tensor[...,1-n]=0
+            if not self.ancilla:
+                vec_tensor[...,1-n]=0
+            else:
+                vec_tensor[...,1-n,:]=0
         if pos == self.L-2:
-            vec_tensor[...,1-n,:]=0
+            if not self.ancilla:
+                vec_tensor[...,1-n,:]=0
+            else:
+                vec_tensor[...,1-n,:,:]=0
         return vec_tensor.flatten()
 
     def T_tensor(self,vec,left=True):
         '''directly transpose the index of tensor'''
-        vec_tensor=vec.reshape((2,)*self.L)
-        idx_list=np.arange(self.L)
-        shift=-1 if left else 1
+        vec_tensor=vec.reshape((2,)*self.L_T)
+        idx_list=np.arange(self.L_T)
+        # shift=-1 if left else 1
         if left:
             idx_list_2=list(range(1,self.L))+[0]
         else:
             idx_list_2=[self.L-1]+list(range(self.L-1))
+        if self.ancilla:
+            idx_list_2.append(self.L)
         return vec_tensor.transpose(idx_list_2).flatten()
 
     def S_tensor(self,vec,rng):
         '''directly convert to tensor and apply to the last two indices'''
         U_4=U(4,rng)
-        vec_tensor=vec.reshape((2**(self.L-2),2**2)).T  
-        return (U_4@vec_tensor).T.flatten()
+        if not self.ancilla:
+            vec_tensor=vec.reshape((2**(self.L-2),2**2)).T  
+            return (U_4@vec_tensor).T.flatten()
+        else:
+            vec_tensor=vec.reshape((2**(self.L-2),2**2,2)).transpose((1,0,2)).reshape((2**2,2**(self.L-1)))
+            return (U_4@vec_tensor).reshape((2**2,2**(self.L-2),2)).transpose((1,0,2)).flatten()
+
 
     def ZZ_tensor(self,vec):
-        vec_tensor=vec.reshape((2,)*self.L)
+        vec_tensor=vec.reshape((2,)*self.L_T)
         rs=0
         for i in range(self.L):
             for zi in range(2):
                 for zj in range(2):
-                    idx_list=[slice(None)]*self.L
+                    idx_list=[slice(None)]*self.L_T
                     idx_list[i],idx_list[(i+1)%self.L]=zi,zj
-                    exp=1-2*(zi^zj)
+                    exp=1-2*(zi^zj) # zi^zj is xor which is only one when zi!=zj
                     vec_i=vec_tensor[tuple(idx_list)].flatten()
                     rs+=vec_i.conj()@vec_i*exp
         return -rs/self.L
@@ -480,7 +507,7 @@ def adder(L):
     old_idx=np.arange(2**(L-1))
     adder_idx=np.array([int_1_6]*2**(L-2)+[int_1_3]*2**(L-2))    
     new_idx=old_idx+adder_idx
-    # handle the extra attractors, if 1..0x1, then 1..0(1-x)1, if 0..1x0, then 0..1(1-x)0 [which shouldn enter in this branch..]
+    # handle the extra attractors, if 1..0x1, then 1..0(1-x)1, if 0..1x0, then 0..1(1-x)0 [shouldn't enter this branch..]
     mask_1=(new_idx&(1<<L-1) == (1<<L-1)) & (new_idx&(1<<2) == (0)) & (new_idx&(1) == (1))
     mask_2=(new_idx&(1<<L-1) == (0)) & (new_idx&(1<<2) == (1<<2)) & (new_idx&(1) == (0))
 

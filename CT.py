@@ -1,6 +1,7 @@
 import numpy as np
 from functools import reduce
 import scipy.sparse as sp
+import scipy
 from fractions import Fraction
 from functools import partial, lru_cache
 
@@ -225,14 +226,14 @@ class CT_quantum:
         assert np.abs(O.imag)<self._eps, f'<O> is not real ({val}) '
         return O.real
 
-    def von_Neumann_entropy(self,subregion,vec=None):
-        '''`subregion` the spatial dof'''
-        if vec is None:
-            vec=self.vec_history[-1].copy()
-        subregion=np.array(subregion)
-        rho=construct_density_matrix(vec)
-        rho_reduce=partial_trace(rho,self.L_T,subregion)
-        return minus_rho_log_rho(rho_reduce)
+    # def von_Neumann_entropy(self,subregion,vec=None):
+    #     '''`subregion` the spatial dof'''
+    #     if vec is None:
+    #         vec=self.vec_history[-1].copy()
+    #     subregion=np.array(subregion)
+    #     rho=construct_density_matrix(vec)
+    #     rho_reduce=partial_trace(rho,self.L_T,subregion)
+    #     return minus_rho_log_rho(rho_reduce)
     
     def von_Neumann_entropy_pure(self,subregion,vec=None):
         '''`subregion` the spatial dof
@@ -243,10 +244,9 @@ class CT_quantum:
         subregion=list(subregion)
         not_subregion=[i for i in range(self.L_T) if i not in subregion]
         vec_tensor_T=vec_tensor.transpose(np.hstack([subregion , not_subregion]))
-        _,S,_=np.linalg.svd(vec_tensor_T.reshape((2**len(subregion),2**len(not_subregion))))
+        S=np.linalg.svd(vec_tensor_T.reshape((2**len(subregion),2**len(not_subregion))),compute_uv=False)
         S_pos=S[S>1e-18]
         return -np.sum(np.log(S_pos**2)*S_pos**2)
-
 
     def half_system_entanglement_entropy(self,vec=None):
         '''\sum_{i=0..L/2-1}S_([i,i+L/2)) / (L/2)'''
@@ -256,8 +256,6 @@ class CT_quantum:
         # return (S_A)
         S_A=self.von_Neumann_entropy_pure(np.arange(self.L//2),vec)
         return S_A
-    
-
 
     def update_history(self,vec=None,op=None):
         if self.history:
@@ -270,9 +268,6 @@ class CT_quantum:
                 self.vec_history=[vec]
             if op is not None:
                 self.op_history=[op]
-
-
-
 
     def get_prob(self,L_list,vec):
         '''get the probability of measuring 0 at site L_list'''
@@ -287,8 +282,6 @@ class CT_quantum:
         prob={(pos,0):self.inner_prob(vec,pos) for pos in L_list}
         prob.update({(pos,1):1-prob[(pos,0)] for pos in L_list})
         return prob
-
-
 
     def inner_prob(self,vec,pos):
         '''probability of `vec` of measuring 0 at L

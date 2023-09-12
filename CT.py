@@ -85,7 +85,7 @@ class CT_quantum:
         self.vec=self._initialize_vector()
         self.vec_history=[self.vec]
         self._eps=_eps
-        self.xj=xj
+        self.xj=set(xj)
     
     def _initialize_vector(self):
         '''save using an array of 2^L
@@ -233,7 +233,11 @@ class CT_quantum:
             vec=self.vec_history[-1].copy()
         # O=(vec.conj().T@ZZ(self.L)@vec).toarray()[0,0]
         # O=(vec.conj().T@ZZ(self.L)@vec)
-        O=self.ZZ_tensor(vec)
+        if self.xj== set([Fraction(1,3),Fraction(2,3)]):
+            O=self.ZZ_tensor(vec)
+        elif self.xj == set([0]):
+            O=self.Z_tensor(vec)
+
 
         assert np.abs(O.imag)<self._eps, f'<O> is not real ({val}) '
         return O.real
@@ -298,7 +302,10 @@ class CT_quantum:
     def inner_prob(self,vec,pos):
         '''probability of `vec` of measuring 0 at L
         convert the vector to tensor (2,2,..), take about the specific pos-th index, and flatten to calculate the inner product'''
-        vec_tensor=vec.reshape((2,)*self.L_T)
+        if vec.ndim == 1:
+            vec_tensor=vec.reshape((2,)*self.L_T)
+        elif vec.ndim== self.L_T:
+            vec_tensor=vec
         idx_list=[slice(None)]*self.L_T
         idx_list[pos]=0
         vec_0=vec_tensor[tuple(idx_list)].flatten()
@@ -367,10 +374,20 @@ class CT_quantum:
                 for zj in range(2):
                     idx_list=[slice(None)]*self.L_T
                     idx_list[i],idx_list[(i+1)%self.L]=zi,zj
-                    exp=1-2*(zi^zj) # zi^zj is xor which is only one when zi!=zj
+                    exp=1-2*(zi^zj) # expectation-- zi^zj is xor of two bits which is only one when zi!=zj
                     vec_i=vec_tensor[tuple(idx_list)].flatten()
                     rs+=vec_i.conj()@vec_i*exp
         return -rs/self.L
+    
+    def Z_tensor(self,vec):
+        vec_tensor=vec.reshape((2,)*self.L_T)
+        rs=0
+        for i in range(self.L):
+            P0=self.inner_prob(vec_tensor,i)
+            rs+=P0*1+(1-P0)*(-1)
+        return rs/self.L
+
+
         
     @lru_cache(maxsize=None)
     def adder(self):

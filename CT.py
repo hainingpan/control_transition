@@ -100,7 +100,7 @@ class CT_quantum:
             vec[0]=1/np.sqrt(2)
             vec[-1]=1/np.sqrt(2)
             # Randomize it 
-            for _ in range(self.L):
+            for _ in range(self.L**2):
                 vec=self.Bernoulli_map(vec)
         return vec
 
@@ -140,6 +140,15 @@ class CT_quantum:
         # vec=P(self.L,n=n,pos=pos)@vec
         vec=self.P_tensor(vec,n,pos)
         vec=normalize(vec)
+
+        # proj to any axis
+        U_2=U(2,self.rng)
+        # if not self.ancilla:
+        vec_tensor=vec.reshape((2,)*self.L_T)
+        idx_list=np.arange(self.L_T)
+        idx_list[pos],idx_list[0]=idx_list[0],idx_list[pos]
+        vec_tensor=vec_tensor.transpose(idx_list).reshape((2,2**(self.L_T-1)))
+        vec=(U_2@vec_tensor).reshape((2,)*self.L_T).transpose(idx_list).flatten()
 
         return vec
 
@@ -450,15 +459,16 @@ def U(n,rng=None):
     Return: dense matrix of Haar random U(4) `Q`'''
     if rng is None:
         rng=np.random.default_rng(None)
-    re=rng.normal(size=(n,n))
-    im=rng.normal(size=(n,n))
-    z=re+1j*im
-    Q,R=np.linalg.qr(z)
-    r_diag=np.diag(R)
-    Lambda=np.diag(r_diag/np.abs(r_diag))
-    Q=Q@Lambda
-    # R=Lambda.conj()@R
-    return Q
+    # re=rng.normal(size=(n,n))
+    # im=rng.normal(size=(n,n))
+    # z=re+1j*im
+    # Q,R=np.linalg.qr(z)
+    # r_diag=np.diag(R)
+    # Lambda=np.diag(r_diag/np.abs(r_diag))
+    # Q=Q@Lambda
+    # # R=Lambda.conj()@R
+    # return Q
+    return scipy.stats.unitary_group.rvs(n,random_state=rng)
 
 def S(L,rng):
     '''construct quantum scrambler, Haar random U(4) applies to the last two digits only
@@ -469,7 +479,9 @@ def S(L,rng):
     # return kron_list(op_list)
 
     I2=sp.eye(2**(L-2))
-    U_4=U(4,rng)
+    # U_4=U(4,rng)
+    U_4=scipy.stats.unitary_group.rvs(4,random_state=rng)
+
     return sp.kron(I2,U_4)
 
 # @lru_cache(maxsize=None)

@@ -99,6 +99,9 @@ class CT_quantum:
             vec=np.zeros((2**(self.L+1),),dtype=complex)
             vec[0]=1/np.sqrt(2)
             vec[-1]=1/np.sqrt(2)
+            # Randomize it 
+            for _ in range(L):
+                ct.random_control_2(p_ctrl=0, p_proj=0)
         return vec
 
     def Bernoulli_map(self,vec):

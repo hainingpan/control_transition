@@ -73,7 +73,7 @@ class CT_classical:
         return -vec_Z@vec_Z_shift/self.L
 
 class CT_quantum:
-    def __init__(self,L,history=False,seed=None,x0=None,_eps=1e-10, ancilla=False):
+    def __init__(self,L,history=False,seed=None,x0=None,xj=set([Fraction(1,3),Fraction(2,3)]),_eps=1e-10, ancilla=False):
         '''save using an array of 2^L'''
         self.L=L # physical L, excluding ancilla
         self.L_T=L+1 if ancilla else L # tensor L, ancilla
@@ -85,7 +85,7 @@ class CT_quantum:
         self.vec=self._initialize_vector()
         self.vec_history=[self.vec]
         self._eps=_eps
-        # self.T={'L':T(self.L,left=True),'R':T(self.L,left=False)}
+        self.xj=xj
     
     def _initialize_vector(self):
         '''save using an array of 2^L
@@ -128,9 +128,9 @@ class CT_quantum:
 
         # Adder
         if not self.ancilla:
-            vec=adder(self.L)@vec
+            vec=adder(self.L,self.xj)@vec
         else:
-            vec=(adder(self.L)@vec.reshape((2**self.L,2))).flatten()
+            vec=(adder(self.L,self.xj)@vec.reshape((2**self.L,2))).flatten()
         
         return vec
 
@@ -142,13 +142,13 @@ class CT_quantum:
         vec=normalize(vec)
 
         # proj to any axis
-        U_2=U(2,self.rng)
-        # if not self.ancilla:
-        vec_tensor=vec.reshape((2,)*self.L_T)
-        idx_list=np.arange(self.L_T)
-        idx_list[pos],idx_list[0]=idx_list[0],idx_list[pos]
-        vec_tensor=vec_tensor.transpose(idx_list).reshape((2,2**(self.L_T-1)))
-        vec=(U_2@vec_tensor).reshape((2,)*self.L_T).transpose(idx_list).flatten()
+        # U_2=U(2,self.rng)
+        # # if not self.ancilla:
+        # vec_tensor=vec.reshape((2,)*self.L_T)
+        # idx_list=np.arange(self.L_T)
+        # idx_list[pos],idx_list[0]=idx_list[0],idx_list[pos]
+        # vec_tensor=vec_tensor.transpose(idx_list).reshape((2,2**(self.L_T-1)))
+        # vec=(U_2@vec_tensor).reshape((2,)*self.L_T).transpose(idx_list).flatten()
 
         return vec
 
@@ -505,24 +505,27 @@ def S(L,rng):
 #     return kron_list(op_list)
 
 @lru_cache(maxsize=None)
-def adder(L):
+def adder(L,xj):
     ''' This is not a full adder, which assume the leading digit in the input bitstring is zero (because of the T^{-1}R_L, the leading bit should always be zero).'''
-    bin_1_6=dec2bin(Fraction(1,6), L)
-    bin_1_6[-1]=1
-    bin_1_3=dec2bin(Fraction(1,3), L)
-    int_1_6=int(''.join(map(str,bin_1_6)),2)
-    int_1_3=int(''.join(map(str,bin_1_3)),2)
-    old_idx=np.arange(2**(L-1))
-    adder_idx=np.array([int_1_6]*2**(L-2)+[int_1_3]*2**(L-2))    
-    new_idx=old_idx+adder_idx
-    # handle the extra attractors, if 1..0x1, then 1..0(1-x)1, if 0..1x0, then 0..1(1-x)0 [shouldn't enter this branch..]
-    mask_1=(new_idx&(1<<L-1) == (1<<L-1)) & (new_idx&(1<<2) == (0)) & (new_idx&(1) == (1))
-    mask_2=(new_idx&(1<<L-1) == (0)) & (new_idx&(1<<2) == (1<<2)) & (new_idx&(1) == (0))
+    if xj==set([Fraction(1,3),Fraction(1,6)]):
+        bin_1_6=dec2bin(Fraction(1,6), L)
+        bin_1_6[-1]=1
+        bin_1_3=dec2bin(Fraction(1,3), L)
+        int_1_6=int(''.join(map(str,bin_1_6)),2)
+        int_1_3=int(''.join(map(str,bin_1_3)),2)
+        old_idx=np.arange(2**(L-1))
+        adder_idx=np.array([int_1_6]*2**(L-2)+[int_1_3]*2**(L-2))    
+        new_idx=old_idx+adder_idx
+        # handle the extra attractors, if 1..0x1, then 1..0(1-x)1, if 0..1x0, then 0..1(1-x)0 [shouldn't enter this branch..]
+        mask_1=(new_idx&(1<<L-1) == (1<<L-1)) & (new_idx&(1<<2) == (0)) & (new_idx&(1) == (1))
+        mask_2=(new_idx&(1<<L-1) == (0)) & (new_idx&(1<<2) == (1<<2)) & (new_idx&(1) == (0))
 
-    new_idx[mask_1+mask_2]=new_idx[mask_1+mask_2]^(0b10)
+        new_idx[mask_1+mask_2]=new_idx[mask_1+mask_2]^(0b10)
 
-    ones=np.ones(2**(L-1))
-    return sp.coo_matrix((ones,(new_idx,old_idx)),shape=(2**L,2**L))
+        ones=np.ones(2**(L-1))
+        return sp.coo_matrix((ones,(new_idx,old_idx)),shape=(2**L,2**L))
+    if xj=set([0]):
+        return sp.eye(2**L)
 
 def normalize(vec):
     # normalization after projection

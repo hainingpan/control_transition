@@ -524,7 +524,7 @@ def adder(L,xj):
 
         ones=np.ones(2**(L-1))
         return sp.coo_matrix((ones,(new_idx,old_idx)),shape=(2**L,2**L))
-    if xj=set([0]):
+    if xj==set([0]):
         return sp.eye(2**L)
 
 def normalize(vec):

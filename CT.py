@@ -100,8 +100,8 @@ class CT_quantum:
             vec[0]=1/np.sqrt(2)
             vec[-1]=1/np.sqrt(2)
             # Randomize it 
-            for _ in range(L):
-                ct.random_control_2(p_ctrl=0, p_proj=0)
+            for _ in range(self.L):
+                vec=self.Bernoulli_map(vec)
         return vec
 
     def Bernoulli_map(self,vec):

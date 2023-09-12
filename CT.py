@@ -128,9 +128,9 @@ class CT_quantum:
 
         # Adder
         if not self.ancilla:
-            vec=adder(self.L,self.xj)@vec
+            vec=self.adder()@vec
         else:
-            vec=(adder(self.L,self.xj)@vec.reshape((2**self.L,2))).flatten()
+            vec=(self.adder()@vec.reshape((2**self.L,2))).flatten()
         
         return vec
 
@@ -371,7 +371,29 @@ class CT_quantum:
                     vec_i=vec_tensor[tuple(idx_list)].flatten()
                     rs+=vec_i.conj()@vec_i*exp
         return -rs/self.L
-            
+        
+    @lru_cache(maxsize=None)
+    def adder(self):
+        ''' This is not a full adder, which assume the leading digit in the input bitstring is zero (because of the T^{-1}R_L, the leading bit should always be zero).'''
+        if self.xj==set([Fraction(1,3),Fraction(2,3)]):
+            bin_1_6=dec2bin(Fraction(1,6), self.L)
+            bin_1_6[-1]=1
+            bin_1_3=dec2bin(Fraction(1,3), self.L)
+            int_1_6=int(''.join(map(str,bin_1_6)),2)
+            int_1_3=int(''.join(map(str,bin_1_3)),2)
+            old_idx=np.arange(2**(self.L-1))
+            adder_idx=np.array([int_1_6]*2**(self.L-2)+[int_1_3]*2**(self.L-2))    
+            new_idx=old_idx+adder_idx
+            # handle the extra attractors, if 1..0x1, then 1..0(1-x)1, if 0..1x0, then 0..1(1-x)0 [shouldn't enter this branch..]
+            mask_1=(new_idx&(1<<self.L-1) == (1<<self.L-1)) & (new_idx&(1<<2) == (0)) & (new_idx&(1) == (1))
+            mask_2=(new_idx&(1<<self.L-1) == (0)) & (new_idx&(1<<2) == (1<<2)) & (new_idx&(1) == (0))
+
+            new_idx[mask_1+mask_2]=new_idx[mask_1+mask_2]^(0b10)
+
+            ones=np.ones(2**(self.L-1))
+            return sp.coo_matrix((ones,(new_idx,old_idx)),shape=(2**self.L,2**self.L))
+        if self.xj==set([0]):
+            return sp.eye(2**self.L)        
     
 
 def construct_density_matrix(vec):
@@ -503,29 +525,6 @@ def S(L,rng):
 #     I2=sp.eye(2,dtype=int).tocsr()
 #     op_list=[I2]*(L-1)+[sigma_x]
 #     return kron_list(op_list)
-
-@lru_cache(maxsize=None)
-def adder(L,xj):
-    ''' This is not a full adder, which assume the leading digit in the input bitstring is zero (because of the T^{-1}R_L, the leading bit should always be zero).'''
-    if xj==set([Fraction(1,3),Fraction(1,6)]):
-        bin_1_6=dec2bin(Fraction(1,6), L)
-        bin_1_6[-1]=1
-        bin_1_3=dec2bin(Fraction(1,3), L)
-        int_1_6=int(''.join(map(str,bin_1_6)),2)
-        int_1_3=int(''.join(map(str,bin_1_3)),2)
-        old_idx=np.arange(2**(L-1))
-        adder_idx=np.array([int_1_6]*2**(L-2)+[int_1_3]*2**(L-2))    
-        new_idx=old_idx+adder_idx
-        # handle the extra attractors, if 1..0x1, then 1..0(1-x)1, if 0..1x0, then 0..1(1-x)0 [shouldn't enter this branch..]
-        mask_1=(new_idx&(1<<L-1) == (1<<L-1)) & (new_idx&(1<<2) == (0)) & (new_idx&(1) == (1))
-        mask_2=(new_idx&(1<<L-1) == (0)) & (new_idx&(1<<2) == (1<<2)) & (new_idx&(1) == (0))
-
-        new_idx[mask_1+mask_2]=new_idx[mask_1+mask_2]^(0b10)
-
-        ones=np.ones(2**(L-1))
-        return sp.coo_matrix((ones,(new_idx,old_idx)),shape=(2**L,2**L))
-    if xj==set([0]):
-        return sp.eye(2**L)
 
 def normalize(vec):
     # normalization after projection

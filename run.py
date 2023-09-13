@@ -2,7 +2,7 @@ from CT import *
 import numpy as np
 import pickle
 import argparse
-# from mpi4py.futures import MPIPoolExecutor
+from mpi4py.futures import MPIPoolExecutor
 
 from fractions import Fraction
 
@@ -41,22 +41,20 @@ if __name__=="__main__":
     fractions = convert_to_fraction(args.xj)
 
 
-    # L_list=np.array([10,12,14,16])
     L_list=np.arange(args.L[0],args.L[1],args.L[2])
 
-    # p_ctrl_list=np.linspace(0,1,11)
-    # p_proj_list=np.linspace(0,1,11)
     p_ctrl_list=np.linspace(args.p_ctrl[0],args.p_ctrl[1],int(args.p_ctrl[2]))
     p_proj_list=np.linspace(args.p_proj[0],args.p_proj[1],int(args.p_proj[2]))
-
+    st=time.time()
     inputs=[(L,p_ctrl,p_proj,[Fraction(1,3),Fraction(2,3)],idx) for L in L_list for p_ctrl in p_ctrl_list for p_proj in p_proj_list for idx in range(args.es)]
 
-    # with MPIPoolExecutor() as executor:
-    #     results=(executor.map(run_quantum,inputs))
-
-    results=list(map(run_quantum,inputs))
+    with MPIPoolExecutor() as executor:
+        results=(executor.map(run_quantum,inputs))
+    # results=list(map(run_quantum,inputs))
 
     rs=np.array(list(results)).reshape((L_list.shape[0],p_ctrl_list.shape[0],p_proj_list.shape[0],args.es,3))
     O_map,EE_map,TMI_map=rs[:,:,:,:,0],rs[:,:,:,:,1],rs[:,:,:,:,2]
     with open('CT_En{:d}_pctrl({:.2f},{:.2f},{:.0f})_pproj({:.2f},{:.2f},{:.0f})_L({:d},{:d},{:d})_xj({:s}).pickle'.format(args.es,*args.p_ctrl,*args.p_proj,*args.L,args.xj.replace('/','-')),'wb') as f:
         pickle.dump({"O":O_map,"EE":EE_map,"TMI":TMI_map,"args":args}, f)
+
+    print('Time elapsed: {:.4f}'.format(time.time()-st))

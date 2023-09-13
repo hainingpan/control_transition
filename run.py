@@ -2,6 +2,7 @@ from CT import *
 import numpy as np
 import pickle
 import argparse
+import time
 from mpi4py.futures import MPIPoolExecutor
 
 from fractions import Fraction

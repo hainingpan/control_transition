@@ -273,6 +273,24 @@ class CT_quantum:
         S_A=self.von_Neumann_entropy_pure(np.arange(self.L//2),vec)
         return S_A
 
+    def tripartite_mutual_information(self,subregion_A,subregion_B, subregion_C,selfaverage=False,vec=None):
+        assert np.intersect1d(subregion_A,subregion_B).size==0 , "Subregion A and B overlap"
+        assert np.intersect1d(subregion_A,subregion_C).size==0 , "Subregion A and C overlap"
+        assert np.intersect1d(subregion_B,subregion_C).size==0 , "Subregion B and C overlap"
+        if vec is None:
+            vec=self.vec_history[-1].copy()
+        if selfaverage:
+            return np.mean([self.tripartite_mutual_information((subregion_A+shift)%self.L,(subregion_B+shift)%self.L,(subregion_C+shift)%self.L,selfaverage=False) for shift in range(len(subregion_A))])
+        else:
+            S_A=self.von_Neumann_entropy_pure(subregion_A,vec=vec)
+            S_B=self.von_Neumann_entropy_pure(subregion_B,vec=vec)
+            S_C=self.von_Neumann_entropy_pure(subregion_C,vec=vec)
+            S_AB=self.von_Neumann_entropy_pure(np.concatenate([subregion_A,subregion_B]),vec=vec)
+            S_AC=self.von_Neumann_entropy_pure(np.concatenate([subregion_A,subregion_C]),vec=vec)
+            S_BC=self.von_Neumann_entropy_pure(np.concatenate([subregion_B,subregion_C]),vec=vec)
+            S_ABC=self.von_Neumann_entropy_pure(np.concatenate([subregion_A,subregion_B,subregion_C]),vec=vec)
+            return S_A+ S_B + S_C-S_AB-S_AC-S_BC+S_ABC
+
     def update_history(self,vec=None,op=None):
         if self.history:
             if vec is not None:

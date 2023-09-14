@@ -43,7 +43,7 @@ if __name__=="__main__":
     
     args=parser.parse_args()
 
-    fractions = convert_to_fraction(args.xj)
+    xj = convert_to_fraction(args.xj)
 
 
     L_list=np.arange(args.L[0],args.L[1],args.L[2])
@@ -51,7 +51,7 @@ if __name__=="__main__":
     p_ctrl_list=np.linspace(args.p_ctrl[0],args.p_ctrl[1],int(args.p_ctrl[2]))
     p_proj_list=np.linspace(args.p_proj[0],args.p_proj[1],int(args.p_proj[2]))
     st=time.time()
-    inputs=[(L,p_ctrl,p_proj,[Fraction(1,3),Fraction(2,3)],idx) for L in L_list for p_ctrl in p_ctrl_list for p_proj in p_proj_list for idx in range(args.es)]
+    inputs=[(L,p_ctrl,p_proj,xj,idx) for L in L_list for p_ctrl in p_ctrl_list for p_proj in p_proj_list for idx in range(args.es)]
 
     with MPIPoolExecutor() as executor:
         results=(executor.map(run_quantum,inputs))

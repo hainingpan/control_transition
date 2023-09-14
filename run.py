@@ -32,7 +32,7 @@ if __name__=="__main__":
     comm = MPI.COMM_WORLD
     size = comm.Get_size()
     # rank = comm.Get_rank()
-    print(f'Total size:{size}')
+    print(f'Total size:{size}',flush=True)
     parser=argparse.ArgumentParser()
     parser.add_argument('--es','-es',default=10,type=int,help='Ensemble size (default: 10).')
     parser.add_argument('--p_ctrl','-p_ctrl',type=float,nargs=3,default=[0,1,11],help='Parameters for p_ctrl in the form [start, stop, num] to generate values with np.linspace (default: [0, 1, 11]).')

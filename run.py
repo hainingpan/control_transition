@@ -3,6 +3,7 @@ import numpy as np
 import pickle
 import argparse
 import time
+from tqdm import tqdm
 from mpi4py.futures import MPIPoolExecutor
 from mpi4py import MPI
 from fractions import Fraction
@@ -54,10 +55,10 @@ if __name__=="__main__":
     inputs=[(L,p_ctrl,p_proj,xj,idx) for L in L_list for p_ctrl in p_ctrl_list for p_proj in p_proj_list for idx in range(args.es)]
 
     with MPIPoolExecutor() as executor:
-        results=(executor.map(run_quantum,inputs))
+        results=list(tqdm(executor.map(run_quantum,inputs),total=len(inputs)))
     # results=list(map(run_quantum,inputs))
 
-    rs=np.array(list(results)).reshape((L_list.shape[0],p_ctrl_list.shape[0],p_proj_list.shape[0],args.es,3))
+    rs=np.array(results).reshape((L_list.shape[0],p_ctrl_list.shape[0],p_proj_list.shape[0],args.es,3))
     O_map,EE_map,TMI_map=rs[:,:,:,:,0],rs[:,:,:,:,1],rs[:,:,:,:,2]
     with open('CT_En{:d}_pctrl({:.2f},{:.2f},{:.0f})_pproj({:.2f},{:.2f},{:.0f})_L({:d},{:d},{:d})_xj({:s}).pickle'.format(args.es,*args.p_ctrl,*args.p_proj,*args.L,args.xj.replace('/','-')),'wb') as f:
         pickle.dump({"O":O_map,"EE":EE_map,"TMI":TMI_map,"args":args}, f)

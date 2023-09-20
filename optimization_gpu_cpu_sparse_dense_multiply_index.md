@@ -23,5 +23,93 @@
 
 
 - [x] sparse vs dense, [sparse is not a good idea because the sparsity is actually very low in volume law, most likely to be a dense matrix]
-3. in place vs return a new
-4. cpu vs gpu
+- [x]. in place vs return a new [as much in-place as I can]
+4. cpu vs gpu [GPU definitely at larger matrix size]
+
+
+# Summary: evo=10 steps
+
+## xj={1/3,2/3}
+### ancilla = False
+
+**Bernoulli map (p_ctrl=0, p_proj=0)**
+
+| L:   | 26   |
+|------|------|
+| CPU: | 32s  |
+| GPU: | 1.6s |
+
+**control map (p_ctrl=1, p_proj=0)**
+
+| L:   | 26   |
+|------|------|
+| CPU: | 42s  |
+| GPU: | 3.3s |
+
+**(p_ctrl=.5, p_proj=0)**
+
+
+## ancilla = True, no initialize
+
+**Bernoulli map (matrix multiplication) (p_ctrl=0, p_proj=0)**
+
+| L:   | 26    |
+|------|-------|
+| CPU: | 1m21s |
+| GPU: | 4.6s  |
+
+**control map (p_ctrl=1, p_proj=0)**
+
+| L:   | 26    |
+|------|-------|
+| CPU: | 2m4s  |
+| GPU: | 11s   |
+
+## xj={0}
+### ancilla = False
+
+**Bernoulli map (p_ctrl=0, p_proj=0)**
+
+| L:   | 26  |
+|------|-----|
+| CPU: | 27.7s   |
+| GPU: | 1.6s   |
+
+**control map (p_ctrl=1, p_proj=0)**
+
+| L:   | 26  |
+|------|-----|
+| CPU: | 39s   |
+| GPU: | 0.4s   |
+
+**(p_ctrl=.5, p_proj=0)**
+
+| L:   | 26 |
+|------|----|
+| CPU: | 39.2s  |
+| GPU: |  1s |
+
+### ancilla = True
+
+**Bernoulli map (p_ctrl=0, p_proj=0)**
+
+| L:   | 26    |
+|------|-------|
+| CPU: | 1m22s |
+| GPU: | 5s    |
+
+
+**Bernoulli map (p_ctrl=0, p_proj=0)**
+| L:   | 26 |
+|------|----|
+| CPU: | 2m13s  |
+| GPU: | 0.9s  |
+
+**(p_ctrl=.5, p_proj=0)**
+
+| L:   | 26 |
+|------|----|
+| CPU: | 1m59s  |
+| GPU: | 3.5s  |
+
+

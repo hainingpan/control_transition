@@ -27,17 +27,18 @@
 4. cpu vs gpu [GPU definitely at larger matrix size]
 
 
-# Summary: evo=10 steps
-
+# Summary of benchmark: evo=10 steps
+CPU: AMD Ryzen Threadripper PRO 5995WX 64-Cores
+GPU: RTX A4000  (6144 CUDA cores, 192 Tensor cores, 48 RT cores, 16GB GDDR6 RAM)
 ## xj={1/3,2/3}
 ### ancilla = False
 
 **Bernoulli map (p_ctrl=0, p_proj=0)**
 
-| L:   | 26   |
-|------|------|
-| CPU: | 32s  |
-| GPU: | 1.6s |
+| L:   | 26   | 28 (GPU:complex64) |
+|------|------|------|
+| CPU: | 32s  | 1m45s|
+| GPU: | 1.6s |  2.4s    |
 
 **control map (p_ctrl=1, p_proj=0)**
 
@@ -46,8 +47,12 @@
 | CPU: | 42s  |
 | GPU: | 3.3s |
 
-**(p_ctrl=.5, p_proj=0)**
+**(p_ctrl=.5, p_proj=0.)**
 
+| L:   | 26   |
+|------|------|
+| CPU: | 38.5s  |
+| GPU: | 3s |
 
 ## ancilla = True, no initialize
 

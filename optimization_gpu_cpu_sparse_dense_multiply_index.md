@@ -38,7 +38,7 @@ GPU: RTX A4000  (6144 CUDA cores, 192 Tensor cores, 48 RT cores, 16GB GDDR6 RAM)
 | L:   | 26   | 28 (GPU:complex64) |
 |------|------|------|
 | CPU: | 32s  | 1m45s|
-| GPU: | 1.6s |  2.4s    |
+| GPU: | 1.6s |  2.4s|
 
 **control map (p_ctrl=1, p_proj=0)**
 
@@ -118,3 +118,25 @@ GPU: RTX A4000  (6144 CUDA cores, 192 Tensor cores, 48 RT cores, 16GB GDDR6 RAM)
 | GPU: | 3.5s  |
 
 
+# Summary of benchmark: evo=10 steps, with multi-ensemble (1000)
+
+**(p_ctrl=0, p_proj=0)**
+| L:   | 18   |  (GPU:complex64) |
+|------|------|------|
+| CPU: | 1m18s  | s|
+| GPU: | s |  s|
+
+**(p_ctrl=1, p_proj=0)**
+| L:   | 18   |  (GPU:complex64) |
+|------|------|------|
+| CPU: | 2m12s  | s|
+| GPU: | s |  s|
+
+**(p_ctrl=.5, p_proj=0)**
+| L:   | 18   |  (GPU:complex64) |
+|------|------|------|
+| CPU(1,128):| 2m  | s|
+| GPU: | 7.7s |  s|
+
+1. profile time
+2. profile GPU RAM

@@ -101,8 +101,8 @@ class CT_quantum:
             vec[0]=1/np.sqrt(2)
             vec[-1]=1/np.sqrt(2)
             # Randomize it 
-            for _ in range(self.L**2):
-                vec=self.Bernoulli_map(vec)
+            # for _ in range(self.L**2):
+            #     vec=self.Bernoulli_map(vec)
         return vec
 
     def Bernoulli_map(self,vec):
@@ -226,6 +226,40 @@ class CT_quantum:
                 op_2 = self.rng.choice(pool_2,p=probabilities_2)
                 vec=op_list[op_2](vec)
                 self.update_history(vec,op_2)
+
+    def random_control_3(self,p_ctrl,p_proj):
+        '''This is the same protocol as `random_control_2`, the only difference is the way to generate rng, and document op'''
+        vec=self.vec_history[-1].copy()
+        op_list= {"C0":partial(self.control_map,bL=0),
+                  "C1":partial(self.control_map,bL=1),
+                  f"P{self.L-1}0":partial(self.projection_map,pos=self.L-1,n=0),
+                  f"P{self.L-1}1":partial(self.projection_map,pos=self.L-1,n=1),
+                  f"P{self.L-2}0":partial(self.projection_map,pos=self.L-2,n=0),
+                  f"P{self.L-2}1":partial(self.projection_map,pos=self.L-2,n=1),
+                  "chaotic":self.Bernoulli_map,
+                  "I":lambda x:x
+                  }
+
+        if self.rng.random()<=p_ctrl:
+            # control 
+            p_0=self.inner_prob(vec, pos=self.L-1,)
+            op='C0' if self.rng.random()<=p_0 else 'C1'
+        else:
+            # chaotic
+            op='chaotic'
+        
+        vec=op_list[op](vec)
+
+        if op=="chaotic":
+            for pos in [self.L-1,self.L-2]:
+                if self.rng.random()<p_proj:
+                    # projection
+                    p_2=self.inner_prob(vec, pos=pos,)
+                    op_2=f"P{pos}0" if self.rng.random()<p_2 else f"P{pos}1"
+                    vec=op_list[op_2](vec)
+                    op=op+'_'+op_2
+        self.update_history(vec,op)
+
 
 
     
@@ -490,102 +524,22 @@ def add_binary(vec1,vec2):
 kron_list=lambda x: reduce(sp.kron,x)
 
 
-    # def von_Neumann_entropy(self,subregion,vec=None):
-    #     '''`subregion` the spatial dof'''
-    #     if vec is None:
-    #         vec=self.vec_history[-1].copy()
-    #     subregion=np.array(subregion)
-    #     rho=construct_density_matrix(vec)
-    #     rho_reduce=partial_trace(rho,self.L_T,subregion)
-    #     return minus_rho_log_rho(rho_reduce)
-
-    
-# @lru_cache(maxsize=None)
-# def T(L,left=True):
-#     '''
-#     circular right shift the computational basis `vec` : 
-#     b_0 b_1 ... b_{L-1} -> right shift -> b_{L-1} b_0 ... b_{L-2}
-#     b_0 b_1 ... b_{L-1} -> left shift ->  b_1 b_2... b_{L-2} b_{L-1}
-#     Return: sparse matrix
-#     '''
-#     SWAP=sp.csr_array([[1,0,0,0],[0,0,1,0],[0,1,0,0],[0,0,0,1]],dtype=int)
-#     I2=sp.eye(2,dtype=int)
-#     op_list=[I2]*(L-1)
-    
-#     rs=sp.eye(2**L,dtype=int)
-#     idx_list=np.arange(L-1)[::-1] if left else np.arange(L-1)
-#     for i in idx_list:
-#         op_list[i]=SWAP
-#         rs=rs@kron_list(op_list)
-#         op_list[i]=I2
-#     return rs
-
 def U(n,rng=None):
     '''Generate Haar random U(n)
     Return: dense matrix of Haar random U(4) `Q`'''
     if rng is None:
         rng=np.random.default_rng(None)
-    # re=rng.normal(size=(n,n))
-    # im=rng.normal(size=(n,n))
-    # z=re+1j*im
-    # Q,R=np.linalg.qr(z)
-    # r_diag=np.diag(R)
-    # Lambda=np.diag(r_diag/np.abs(r_diag))
-    # Q=Q@Lambda
-    # # R=Lambda.conj()@R
-    # return Q
     return scipy.stats.unitary_group.rvs(n,random_state=rng)
 
 def S(L,rng):
     '''construct quantum scrambler, Haar random U(4) applies to the last two digits only
     Return : sparse matrix'''
-    # I2=sp.eye(2,dtype=int)
-    # U_4=U(4,rng)
-    # op_list=[I2]*(L-2)+[U_4]
-    # return kron_list(op_list)
 
     I2=sp.eye(2**(L-2))
-    # U_4=U(4,rng)
     U_4=scipy.stats.unitary_group.rvs(4,random_state=rng)
 
     return sp.kron(I2,U_4)
 
-# @lru_cache(maxsize=None)
-# def P(L,n,pos=None):
-#     '''projection to n=0 or 1
-#     Return : sparse matrix'''
-#     if pos is None:
-#         pos=L-1
-#     PL=sp.diags([1-n,n])
-#     I2=sp.eye(2,dtype=int)
-#     op_list=[I2]*(L)
-#     op_list[pos]=PL
-#     return kron_list(op_list)
-
-# @lru_cache(maxsize=None)
-# def XL(L):
-#     '''X_L for the last digits'''
-#     sigma_x=sp.csr_matrix([[0,1],[1,0]],dtype=int)
-#     I2=sp.eye(2,dtype=int).tocsr()
-#     op_list=[I2]*(L-1)+[sigma_x]
-#     return kron_list(op_list)
-
-
-# @lru_cache(maxsize=None)
-# def ZZ(L):
-#     '''Z |0> = -|0>
-#     Z |1> = |1>'''
-#     sigma_Z= sp.csr_matrix([[-1,0],[0,1]],dtype=int)
-#     I2=sp.eye(2,dtype=int)
-#     op_list=[I2]*(L)
-#     rs=0
-#     for i in range(L):
-#         # a little dumb here, swap can be used but anyway, profiling is a later step
-#         # another simplied way is to note basis is the eigenvector of ZZ
-#         op_list[i],op_list[(i+1)%L]=sigma_Z,sigma_Z
-#         rs=rs+kron_list(op_list)
-#         op_list[i],op_list[(i+1)%L]=I2,I2
-#     return -rs/L
 
 
 @lru_cache(maxsize=None)
@@ -595,14 +549,16 @@ def bin_pad(x,L):
 
 class CT_tensor:
     def __init__(self,L,history=False,seed=None,x0=None,xj=set([Fraction(1,3),Fraction(2,3)]),_eps=1e-10, ancilla=False,gpu=False,complex128=True):
-        '''complex128: complex128 or complex64, default `complex128`'''
+        '''the tensor is saved as (0,1,...L-1, ancilla, ensemble)
+        complex128: True:complex128 or False: complex64, default `complex128`'''
         self.L=L # physical L, excluding ancilla
         self.L_T=L+1 if ancilla else L # tensor L, ancilla
         self.history=history
         self.gpu=gpu
-        self.device=self._initialize_device(seed)
-        self.rng=np.random.default_rng(seed)
-        self.x0=self.rng.random() if x0 is None else x0
+        self.device=self._initialize_device()
+        self.rng=np.array([np.random.default_rng(s) for s in seed])
+
+        self.x0=[rng.random() if x is None else x for rng,x in zip(self.rng,([x0]*len(self.rng)) if x0 is None else x0)]
         self.op_history=[]  
         self.ancilla=ancilla
         self.dtype={'numpy':np.complex128,'torch':torch.complex128} if complex128 else {'numpy':np.complex64,'torch':torch.complex64}
@@ -610,44 +566,51 @@ class CT_tensor:
         self.vec_history=[self.vec]
         self._eps=_eps
         self.xj=set(xj)
+        self.op_list=self._initialize_op()
 
-    def _initialize_device(self,seed):
+    def _initialize_device(self):
         if self.gpu:
             if torch.cuda.is_available():
                 device = torch.device("cuda")
                 print('Using',device)
-                if seed is not None:
-                    torch.manual_seed(seed)
-                    torch.cuda.manual_seed(seed)
                 return device
             else:
                 raise ValueError('CUDA is not available')
         else:
             print('Using cpu')
-            if seed is not None:
-                torch.manual_seed(seed)
 
     def _initialize_vector(self):
         '''save using an array of 2^L
         if ancilla qubit: it should be put to the last qubit, positioned as L, entangled with L-1'''
         if not self.ancilla:
-            vec_int=dec2bin(self.x0,self.L)
-            vec=torch.zeros((2,)*self.L,dtype=self.dtype['torch'],device=self.device)
-            vec[tuple(vec_int)]=1
+            vec_int=np.array([np.hstack([dec2bin(x0,self.L),[idx]]) for idx,x0 in enumerate(self.x0)])
+            vec=torch.zeros((2,)*(self.L)+(len(self.x0),),dtype=self.dtype['torch'],device=self.device)
+            vec[tuple((vec_int).T)]=1
         else:
             # Simply create a GHZ state, (|0...0> + |1...1> )/sqrt(2)
-            vec=torch.zeros((2,)*self.L_T,dtype=self.dtype['torch'],device=self.device)
+            vec=torch.zeros((2,)*(self.L_T)+(len(self.x0),),dtype=self.dtype['torch'],device=self.device)
             vec[(0,)*self.L_T]=1/np.sqrt(2)
             vec[(1,)*self.L_T]=1/np.sqrt(2)
 
             # Randomize it 
             for _ in range(self.L**2):
-                vec=self.Bernoulli_map(vec)
+                vec=self.Bernoulli_map(vec,self.rng)
         return vec
+    
+    def _initialize_op(self):
+        return {"C0":partial(self.control_map,bL=0),
+                "C1":partial(self.control_map,bL=1),
+                f"P{self.L-1}0":partial(self.projection_map,pos=self.L-1,n=0),
+                f"P{self.L-1}1":partial(self.projection_map,pos=self.L-1,n=1),
+                f"P{self.L-2}0":partial(self.projection_map,pos=self.L-2,n=0),
+                f"P{self.L-2}1":partial(self.projection_map,pos=self.L-2,n=1),
+                "chaotic":self.Bernoulli_map,
+                "I":lambda x:x
+                }
 
-    def Bernoulli_map(self,vec):
+    def Bernoulli_map(self,vec,rng):
         vec=self.T_tensor(vec,left=True)
-        vec=self.S_tensor(vec,rng=self.rng)
+        vec=self.S_tensor(vec,rng=rng)
         return vec
 
     def control_map(self,vec,bL):
@@ -675,38 +638,34 @@ class CT_tensor:
         self.normalize_(vec)
         return vec
 
-    def random_control(self,p_ctrl,p_proj):
+    def random_control(self,p_ctrl,p_proj,vec=None):
         '''the competition between chaotic and random, where the projection can only be applied after the unitary
         Notation: L-1 is the last digits'''
-        # vec=self.vec_history[-1]
-        
-        p= self.get_prob_tensor([self.L-1],self.vec)
+        if vec is None:
+            vec=self.vec
 
-        pool = ["C0","C1","chaotic"]
-        probabilities = [p_ctrl * p[(self.L-1,0)], p_ctrl * p[(self.L-1,1)],  1- p_ctrl]
+        ctrl_idx_dict=self.generate_binary(np.arange(self.rng.shape[0]), p_ctrl)
+        ctrl_0_idx_dict={False:[],True:[]}
+        if len(ctrl_idx_dict[True])>0:
+            p_0= self.inner_prob(vec=vec[...,ctrl_idx_dict[True]],pos=[self.L-1],n_list=[0]) # prob for 0
+            ctrl_0_idx_dict=self.generate_binary(ctrl_idx_dict[True], p_0)
+            for key,idx in ctrl_0_idx_dict.items():
+                if len(idx)>0:
+                    vec[...,idx]=self.op_list[f'C{0*key+1*(1-key)}'](vec[...,idx])
 
-        op = self.rng.choice(pool,p=probabilities)
-
-        op_list= {"C0":partial(self.control_map,bL=0),
-                "C1":partial(self.control_map,bL=1),
-                f"P{self.L-1}0":partial(self.projection_map,pos=self.L-1,n=0),
-                f"P{self.L-1}1":partial(self.projection_map,pos=self.L-1,n=1),
-                f"P{self.L-2}0":partial(self.projection_map,pos=self.L-2,n=0),
-                f"P{self.L-2}1":partial(self.projection_map,pos=self.L-2,n=1),
-                "chaotic":self.Bernoulli_map,
-                "I":lambda x:x
-                }
-        self.vec=op_list[op](self.vec)
-        self.update_history(self.vec,op)
-
-        if op=="chaotic":
+        proj_idx_dict={} # {pos: {True: .., False:..}} whether pos is projected
+        proj_0_idx_dict={} # {pos: {True:.., False: ..}} if projected, whether it is projected to 0 
+        if len(ctrl_idx_dict[False])>0:
+            vec[...,ctrl_idx_dict[False]]=self.op_list['chaotic'](vec[...,ctrl_idx_dict[False]],self.rng[ctrl_idx_dict[False]])
             for pos in [self.L-1,self.L-2]:
-                p_2=self.get_prob_tensor([pos], self.vec)
-                pool_2=["I",f"P{pos}0",f"P{pos}1"]
-                probabilities_2=[1-p_proj, p_proj * p_2[(pos,0)], p_proj *  p_2[(pos,1)],]
-                op_2 = self.rng.choice(pool_2,p=probabilities_2)
-                self.vec=op_list[op_2](self.vec)
-                self.update_history(self.vec,op_2)
+                proj_idx_dict[pos]=self.generate_binary(ctrl_idx_dict[False], p_proj)
+                if len(proj_idx_dict[pos][True])>0:
+                    p_2 = self.inner_prob(vec=vec[...,proj_idx_dict[pos][True]],pos=[pos], n_list=[0])
+                    proj_0_idx_dict[pos]=self.generate_binary(proj_idx_dict[pos][True], p_2)
+                    for key,idx in proj_0_idx_dict[pos].items():
+                        if len(idx)>0:
+                            vec[...,idx]=self.op_list[f'P{pos}{0*key+1*(1-key)}'](vec[...,idx])
+        self.update_history(vec,ctrl_idx_dict,ctrl_0_idx_dict,proj_idx_dict,proj_0_idx_dict)
 
     def order_parameter(self,vec=None):
         if vec is None:
@@ -722,13 +681,18 @@ class CT_tensor:
         this version uses Schmidt decomposition, which is easier for pure state'''
         if vec is None:
             vec=self.vec
+        if not self.gpu:
+            driver=None
         subregion=list(subregion)
         not_subregion=[i for i in range(self.L_T) if i not in subregion]
-        vec=vec.permute(subregion+not_subregion)
-        vec_=vec.contiguous().view((2**len(subregion),2**len(not_subregion)))
-        S=torch.linalg.svdvals(vec_,driver=driver)
-        S_pos=S[S>1e-18]
-        return -torch.sum(torch.log(S_pos**2)*S_pos**2).item()
+        vec=vec.permute(subregion+not_subregion+[self.L_T])
+        vec_=vec.contiguous().view((2**len(subregion),2**len(not_subregion),len(self.rng)))
+        vNE=[]
+        for i in range(len(self.rng)):
+            S=torch.linalg.svdvals(vec_[:,:,i],driver=driver)
+            S_pos=S[S>1e-18]
+            vNE.append(-torch.sum(torch.log(S_pos**2)*S_pos**2).item())
+        return np.array(vNE)
 
     def half_system_entanglement_entropy(self,vec=None,selfaverage=False):
         '''\sum_{i=0..L/2-1}S_([i,i+L/2)) / (L/2)'''
@@ -760,51 +724,60 @@ class CT_tensor:
             S_ABC=self.von_Neumann_entropy_pure(np.concatenate([subregion_A,subregion_B,subregion_C]),vec=vec)
             return S_A+ S_B + S_C-S_AB-S_AC-S_BC+S_ABC
     
-    def update_history(self,vec=None,op=None):
+    def update_history(self,vec=None,ctrl_idx_dict=None,ctrl_0_idx_dict=None,proj_idx_dict=None,proj_0_idx_dict=None):
         if self.history:
             if vec is not None:
                 self.vec_history.append(vec.cpu().clone())
-            if op is not None:
-                self.op_history.append(op)
+            if ctrl_idx_dict is not None and ctrl_0_idx_dict is not None and proj_idx_dict is not None and proj_0_idx_dict is not None:
+                op_map=np.empty((self.rng.shape[0],),dtype='<U20')
+                op_map[ctrl_0_idx_dict[True]]='C0'
+                op_map[ctrl_0_idx_dict[False]]='C1'
+                op_map[ctrl_idx_dict[False]]='chaotic'
 
-    def get_prob_tensor(self,L_list,vec):
-        prob={(pos,0):self.inner_prob(vec,[pos],[0]) for pos in L_list}
-        prob.update({(pos,1):1-prob[(pos,0)] for pos in L_list})
-        return prob
+                for pos,idx_dict in proj_0_idx_dict.items():
+                    if len(idx_dict[True])>0:
+                        op_map[idx_dict[True]]=np.char.add(op_map[idx_dict[True]],f'_P{pos}0')
+                    if len(idx_dict[False])>0:
+                        op_map[idx_dict[False]]=np.char.add(op_map[idx_dict[False]],f'_P{pos}1')
+
+                self.op_history.append(op_map)
 
     def normalize_(self,vec):
-        # normalization after projection
-        norm=torch.sqrt(torch.tensordot(vec.conj(),vec,dims=(list(range(self.L_T)),list(range(self.L_T)))))
+        '''normalization after projection'''
+        # norm=torch.sqrt(torch.tensordot(vec.conj(),vec,dims=(list(range(self.L_T)),list(range(self.L_T)))))
+        norm=torch.sqrt(torch.einsum(vec.conj(),[...,0],vec,[...,0],[0]))
 
-        assert norm != 0 , f'Cannot normalize: norm is zero {norm}'
+        assert torch.all(norm != 0) , f'Cannot normalize: norm is zero {norm}'
         vec/=norm
     
     def inner_prob(self,vec,pos,n_list):
         '''probability of `vec` of measuring `n_list` at `pos`
         convert the vector to tensor (2,2,..), take about the specific pos-th index, and flatten to calculate the inner product'''
-        idx_list=[slice(None)]*self.L_T
-        for p,n in zip(pos,n_list):
-            idx_list[p]=n
+        idx_list=np.array([slice(None)]*self.L_T)
+        # for p,n in zip(pos,n_list):
+        #     idx_list[p]=n
+        idx_list[pos]=n_list
         vec_0=vec[tuple(idx_list)]
-        inner_prod=torch.tensordot(vec_0.conj(),vec_0,dims=(list(range(vec_0.dim())),list(range(vec_0.dim())))).item()
+        # inner_prod=torch.tensordot(vec_0.conj(),vec_0,dims=(list(range(vec_0.dim())),list(range(vec_0.dim())))).item()
+        inner_prod=torch.einsum(vec_0.conj(),[...,0],vec_0,[...,0],[0]).cpu().numpy() # overhead??
 
-        assert np.abs(inner_prod.imag)<self._eps, f'probability for outcome 0 is not real {inner_prod}'
+        assert np.all(np.abs(inner_prod.imag)<self._eps), f'probability for outcome 0 is not real {inner_prod}'
         inner_prod=inner_prod.real
-        assert inner_prod>-self._eps, f'probability for outcome 0 is not positive {inner_prod}'
-        inner_prod=max(0,inner_prod)
-        assert inner_prod<1+self._eps, f'probability for outcome 1 is not smaller than 1 {inner_prod}'
-        inner_prod=min(inner_prod,1)
+        assert np.all(inner_prod>-self._eps), f'probability for outcome 0 is not positive {inner_prod}'
+        inner_prod=np.maximum(0,inner_prod)
+        assert np.all(inner_prod<1+self._eps), f'probability for outcome 1 is not smaller than 1 {inner_prod}'
+        inner_prod=np.minimum(inner_prod,1)
         return inner_prod
 
     def XL_tensor_(self,vec):
         '''directly swap 0 and 1'''
         if not self.ancilla:
             # vec=vec[...,[1,0]]
-            vec[...,[0,1]]=vec[...,[1,0]]
+            vec[...,[0,1],:]=vec[...,[1,0],:]
 
         else:
             # vec=vec[...,[1,0],:]
-            vec[...,[0,1],:]=vec[...,[1,0],:]
+            vec[...,[0,1],:,:]=vec[...,[1,0],:,:]
         # return vec
 
     def P_tensor_(self,vec,n,pos=None):
@@ -815,14 +788,14 @@ class CT_tensor:
         if pos is None or pos==self.L-1:
             # project the last site
             if not self.ancilla:
-                vec[...,1-n]=0
-            else:
-                vec[...,1-n,:]=0
-        if pos == self.L-2:
-            if not self.ancilla:
                 vec[...,1-n,:]=0
             else:
                 vec[...,1-n,:,:]=0
+        if pos == self.L-2:
+            if not self.ancilla:
+                vec[...,1-n,:,:]=0
+            else:
+                vec[...,1-n,:,:,:]=0
         # return vec
 
     def T_tensor(self,vec,left=True):
@@ -837,18 +810,21 @@ class CT_tensor:
             idx_list_2=[self.L-1]+list(range(self.L-1))
         if self.ancilla:
             idx_list_2.append(self.L)
+        idx_list_2.append(self.L_T)
         return vec.permute(idx_list_2)
 
     def S_tensor(self,vec,rng):
         '''Scrambler only applies to the last two indices'''
-        U_4=torch.from_numpy(U(4,rng).astype(self.dtype['numpy']).reshape((2,)*4))
+        U_4=torch.from_numpy(np.array([U(4,rng).astype(self.dtype['numpy']).reshape((2,)*4) for rng in rng]))
         if self.gpu:
             U_4=U_4.cuda()
         if not self.ancilla:
-            vec=torch.tensordot(vec,U_4,dims=([self.L-2,self.L-1],[2,3]))
+            # vec=torch.tensordot(vec,U_4,dims=([self.L-2,self.L-1],[2,3])).permute(list(range(self.L-2))+[self.L-1,self.L]+[self.L-2])
+            vec=torch.einsum(vec,[...,0,1,2],U_4,[2,3,4,0,1],[...,3,4,2])
             return vec
         else:
-            vec=torch.tensordot(vec,U_4,dims=([self.L-2,self.L-1],[2,3])).permute(list(range(self.L-2))+list(range(self.L-1,self.L+1))+[self.L-2])
+            # vec=torch.tensordot(vec,U_4,dims=([self.L-2,self.L-1],[2,3])).permute(list(range(self.L-2))+[self.L,self.L+1]+[self.L-2,self.L-1])
+            vec=torch.einsum(vec,[...,0,1,2,3],U_4,[3,4,5,0,1],[...,4,5,2,3])
             return vec
 
     def ZZ_tensor(self,vec):
@@ -891,16 +867,30 @@ class CT_tensor:
         if self.xj==set([0]):
             return np.array([[]]), np.array([[]]),
 
+
     def adder_tensor_(self,vec,new_idx,old_idx):
         if (new_idx).size>0 and (old_idx).size>0:
             
-            vec_flatten=vec.view(-1)    # create a reference
+            vec_flatten=vec.view((-1,vec.shape[-1]))    # create a reference
             if self.ancilla:
                 new_idx=np.hstack([new_idx<<1,(new_idx<<1)+1])
                 old_idx=np.hstack([old_idx<<1,(old_idx<<1)+1])
 
-            vec_flatten[new_idx]=vec_flatten[old_idx]
+            vec_flatten[new_idx,:]=vec_flatten[old_idx,:]
             
             not_new_map=np.ones(2**(self.L_T),dtype=bool)
             not_new_map[new_idx]=False
-            vec_flatten[not_new_map]=0
+            vec_flatten[not_new_map,:]=0
+
+    def generate_binary(self,idx_list,p):
+        '''Generate boolean list, given probability `p` and seed `self.rng[idx]`'''
+        if isinstance(p, float) or isinstance(p, int):
+            p_list=[p]*len(idx_list)
+        else:
+            assert len(idx_list) == len(p), f'len of idx_list {len(idx_list)} is not same as len of p {len(p)}'
+            p_list=p
+
+        idx_dict={True:[],False:[]}
+        for idx,p in zip(idx_list,p_list):
+            idx_dict[self.rng[idx].random()<=p].append(idx)
+        return idx_dict

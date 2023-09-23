@@ -140,3 +140,36 @@ GPU: RTX A4000  (6144 CUDA cores, 192 Tensor cores, 48 RT cores, 16GB GDDR6 RAM)
 
 1. profile time
 2. profile GPU RAM
+
+
+1. JIT
+2. save in time, checkpoint fashion
+3. work with multiple GPU
+4. construct from tensor (fix it), 
+5. memory management, what is the max usage of memory
+6. remove numpy functions as much as possible (ok, nothing really change, maybe because numpy are mostly for slicing indices)
+
+
+```
+GPU Mem
+                    def control_map(self,vec,bL):
+                        '''control map depends on the outcome of the measurement of bL'''
+1420                    # projection on the last bits
+1420/1420/2452/2452          self.P_tensor_(vec,bL)                  
+                        if bL==1:
+                            self.XL_tensor_(vec)
+1420/1636/    /2452     self.normalize_(vec)
+                        # right shift 
+1420/1852/2452/2452     vec=self.T_tensor(vec,left=False)
+        
+                        # Adder
+                        new_idx,old_idx=self.adder()
+1420/1852/    /2452     if not vec.is_contiguous():
+                            vec=vec.contiguous()
+1420/1852/2452/2452     self.adder_tensor_(vec,new_idx,old_idx)
+                        
+1420/1852/2452/2452     return vec
+
+71 (): 3420
+73 (normalize_): 
+```

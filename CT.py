@@ -101,8 +101,8 @@ class CT_quantum:
             vec[0]=1/np.sqrt(2)
             vec[-1]=1/np.sqrt(2)
             # Randomize it 
-            # for _ in range(self.L**2):
-            #     vec=self.Bernoulli_map(vec)
+            for _ in range(self.L**2):
+                vec=self.Bernoulli_map(vec)
         return vec
 
     def Bernoulli_map(self,vec):
@@ -524,12 +524,12 @@ def add_binary(vec1,vec2):
 kron_list=lambda x: reduce(sp.kron,x)
 
 
-def U(n,rng=None):
+def U(n,rng=None,size=1):
     '''Generate Haar random U(n)
     Return: dense matrix of Haar random U(4) `Q`'''
     if rng is None:
         rng=np.random.default_rng(None)
-    return scipy.stats.unitary_group.rvs(n,random_state=rng)
+    return scipy.stats.unitary_group.rvs(n,random_state=rng,size=size)
 
 def S(L,rng):
     '''construct quantum scrambler, Haar random U(4) applies to the last two digits only
@@ -548,17 +548,21 @@ def bin_pad(x,L):
     return (bin(x)[2:]).rjust(L,'0')
 
 class CT_tensor:
-    def __init__(self,L,history=False,seed=None,x0=None,xj=set([Fraction(1,3),Fraction(2,3)]),_eps=1e-10, ancilla=False,gpu=False,complex128=True):
+    def __init__(self,L,history=False,seed=None,x0=None,xj=set([Fraction(1,3),Fraction(2,3)]),_eps=1e-10, ancilla=False,gpu=False,complex128=True,ensemble=None):
         '''the tensor is saved as (0,1,...L-1, ancilla, ensemble)
-        complex128: True:complex128 or False: complex64, default `complex128`'''
+        complex128: True:complex128 or False: complex64, default `complex128`
+        if `seed` is a list, use numpy rng generator, the ensemble size is the same as `len(seed)`
+        if `seed` is a number, use torch random, the ensemble size is given by `ensemble`
+        '''
         self.L=L # physical L, excluding ancilla
         self.L_T=L+1 if ancilla else L # tensor L, ancilla
         self.history=history
         self.gpu=gpu
         self.device=self._initialize_device()
-        self.rng=np.array([np.random.default_rng(s) for s in seed])
+        self.ensemble=ensemble
+        self.rng=self._initialize_random_seed(seed)
 
-        self.x0=[rng.random() if x is None else x for rng,x in zip(self.rng,([x0]*len(self.rng)) if x0 is None else x0)]
+        self.x0=self._initialize_x0(x0)
         self.op_history=[]  
         self.ancilla=ancilla
         self.dtype={'numpy':np.complex128,'torch':torch.complex128} if complex128 else {'numpy':np.complex64,'torch':torch.complex64}
@@ -567,6 +571,8 @@ class CT_tensor:
         self._eps=_eps
         self.xj=set(xj)
         self.op_list=self._initialize_op()
+        self.new_idx,self.old_idx, self.not_new_idx=self.adder_gpu()
+        self.tensor_true,self.tensor_false=torch.tensor(True,device=self.device), torch.tensor(False,device=self.device) # this is a workaround for generate_binary, because loop over tensor returns a tensor with a single value
 
     def _initialize_device(self):
         if self.gpu:
@@ -578,14 +584,34 @@ class CT_tensor:
                 raise ValueError('CUDA is not available')
         else:
             print('Using cpu')
+    
+    def _initialize_random_seed(self,seed):
+        if self.ensemble is None:
+            return np.array([np.random.default_rng(s) for s in seed])
+        else:
+            torch.manual_seed(seed)
+
+    def _initialize_x0(self,x0):
+        if self.ensemble is None:
+            return [rng.random() if x is None else x for rng,x in zip(self.rng,([x0]*len(self.rng)) if x0 is None else x0)]
+        else:
+            if x0 is None:
+                return torch.randint(0,2**self.L,(self.ensemble,),device=self.device)
+            else:
+                return x0
 
     def _initialize_vector(self):
         '''save using an array of 2^L
         if ancilla qubit: it should be put to the last qubit, positioned as L, entangled with L-1'''
         if not self.ancilla:
-            vec_int=np.array([np.hstack([dec2bin(x0,self.L),[idx]]) for idx,x0 in enumerate(self.x0)])
             vec=torch.zeros((2,)*(self.L)+(len(self.x0),),dtype=self.dtype['torch'],device=self.device)
-            vec[tuple((vec_int).T)]=1
+            if self.ensemble is None:
+                vec_int=np.array([np.hstack([dec2bin(x0,self.L),[idx]]) for idx,x0 in enumerate(self.x0)])
+                vec[tuple((vec_int).T)]=1
+            else:
+                vec_v=vec.view((-1,self.ensemble))
+                vec_v[self.x0,torch.arange(self.ensemble,device=self.device)]=1
+
         else:
             # Simply create a GHZ state, (|0...0> + |1...1> )/sqrt(2)
             vec=torch.zeros((2,)*(self.L_T)+(len(self.x0),),dtype=self.dtype['torch'],device=self.device)
@@ -593,8 +619,8 @@ class CT_tensor:
             vec[(1,)*self.L_T]=1/np.sqrt(2)
 
             # Randomize it 
-            for _ in range(self.L**2):
-                vec=self.Bernoulli_map(vec,self.rng)
+            # for _ in range(self.L**2):
+            #     vec=self.Bernoulli_map(vec,self.rng)
         return vec
     
     def _initialize_op(self):
@@ -618,16 +644,16 @@ class CT_tensor:
         # projection on the last bits
         self.P_tensor_(vec,bL)
         if bL==1:
-            self.XL_tensor_(vec)
+            vec=self.XL_tensor_(vec)
         self.normalize_(vec)
         # right shift 
         vec=self.T_tensor(vec,left=False)
 
         # Adder
-        new_idx,old_idx=self.adder()
+        
         if not vec.is_contiguous():
             vec=vec.contiguous()
-        self.adder_tensor_(vec,new_idx,old_idx)
+        self.adder_tensor_(vec)
         
         return vec
     
@@ -644,10 +670,11 @@ class CT_tensor:
         if vec is None:
             vec=self.vec
 
-        ctrl_idx_dict=self.generate_binary(np.arange(self.rng.shape[0]), p_ctrl)
-        ctrl_0_idx_dict={False:[],True:[]}
+        ctrl_idx_dict=self.generate_binary(torch.arange(self.rng.shape[0] if self.ensemble is None else self.ensemble,device=self.device), p_ctrl)
+        ctrl_0_idx_dict={}
         if len(ctrl_idx_dict[True])>0:
-            p_0= self.inner_prob(vec=vec[...,ctrl_idx_dict[True]],pos=[self.L-1],n_list=[0]) # prob for 0
+            vec_ctrl=vec[...,ctrl_idx_dict[True]]
+            p_0= self.inner_prob(vec=vec_ctrl,pos=[self.L-1],n_list=[0]) # prob for 0
             ctrl_0_idx_dict=self.generate_binary(ctrl_idx_dict[True], p_0)
             for key,idx in ctrl_0_idx_dict.items():
                 if len(idx)>0:
@@ -656,11 +683,13 @@ class CT_tensor:
         proj_idx_dict={} # {pos: {True: .., False:..}} whether pos is projected
         proj_0_idx_dict={} # {pos: {True:.., False: ..}} if projected, whether it is projected to 0 
         if len(ctrl_idx_dict[False])>0:
-            vec[...,ctrl_idx_dict[False]]=self.op_list['chaotic'](vec[...,ctrl_idx_dict[False]],self.rng[ctrl_idx_dict[False]])
+            rng_ctrl=self.rng[ctrl_idx_dict[False].cpu().numpy()] if self.ensemble is None else ctrl_idx_dict[False].shape[0]
+            vec[...,ctrl_idx_dict[False]]=self.op_list['chaotic'](vec[...,ctrl_idx_dict[False]],rng_ctrl)
             for pos in [self.L-1,self.L-2]:
                 proj_idx_dict[pos]=self.generate_binary(ctrl_idx_dict[False], p_proj)
                 if len(proj_idx_dict[pos][True])>0:
-                    p_2 = self.inner_prob(vec=vec[...,proj_idx_dict[pos][True]],pos=[pos], n_list=[0])
+                    vec_p=vec[...,proj_idx_dict[pos][True]]
+                    p_2 = self.inner_prob(vec=vec_p,pos=[pos], n_list=[0])
                     proj_0_idx_dict[pos]=self.generate_binary(proj_idx_dict[pos][True], p_2)
                     for key,idx in proj_0_idx_dict[pos].items():
                         if len(idx)>0:
@@ -685,19 +714,23 @@ class CT_tensor:
             driver=None
         subregion=list(subregion)
         not_subregion=[i for i in range(self.L_T) if i not in subregion]
-        vec=vec.permute(subregion+not_subregion+[self.L_T])
-        vec_=vec.contiguous().view((2**len(subregion),2**len(not_subregion),len(self.rng)))
-        vNE=[]
-        for i in range(len(self.rng)):
-            S=torch.linalg.svdvals(vec_[:,:,i],driver=driver)
-            S_pos=S[S>1e-18]
-            vNE.append(-torch.sum(torch.log(S_pos**2)*S_pos**2).item())
-        return np.array(vNE)
+        vec=vec.permute([self.L_T]+subregion+not_subregion)
+        vec_=vec.contiguous().view((self.rng.shape[0] if self.ensemble is None else self.ensemble,2**len(subregion),2**len(not_subregion)))
+
+        S=torch.linalg.svdvals(vec_,driver=driver)
+        S_pos=torch.clamp(S,min=1e-18)
+        return torch.sum(-torch.log(S_pos**2)*S_pos**2,axis=1)
+
+        # vNE=torch.empty((self.rng.shape[0] if self.ensemble is None else self.ensemble,),dtype=torch.float)
+        # for i in range(self.rng.shape[0] if self.ensemble is None else self.ensemble):
+        #     S=torch.linalg.svdvals(vec_[i,:,:],driver=driver)
+        #     S_pos=S[S>1e-18]
+        #     vNE[i]=(-torch.sum(torch.log(S_pos**2)*S_pos**2).item())
+        # return vNE
 
     def half_system_entanglement_entropy(self,vec=None,selfaverage=False):
         '''\sum_{i=0..L/2-1}S_([i,i+L/2)) / (L/2)'''
         if vec is None:
-            # vec=self.vec_history[-1].copy()
             vec=self.vec
         if selfaverage:
             S_A=np.mean([self.von_Neumann_entropy_pure(np.arange(i,i+self.L//2),vec) for i in range(self.L//2)])
@@ -710,7 +743,6 @@ class CT_tensor:
         assert np.intersect1d(subregion_A,subregion_C).size==0 , "Subregion A and C overlap"
         assert np.intersect1d(subregion_B,subregion_C).size==0 , "Subregion B and C overlap"
         if vec is None:
-            # vec=self.vec_history[-1].copy()
             vec=self.vec
         if selfaverage:
             return np.mean([self.tripartite_mutual_information((subregion_A+shift)%self.L,(subregion_B+shift)%self.L,(subregion_C+shift)%self.L,selfaverage=False) for shift in range(len(subregion_A))])
@@ -729,7 +761,7 @@ class CT_tensor:
             if vec is not None:
                 self.vec_history.append(vec.cpu().clone())
             if ctrl_idx_dict is not None and ctrl_0_idx_dict is not None and proj_idx_dict is not None and proj_0_idx_dict is not None:
-                op_map=np.empty((self.rng.shape[0],),dtype='<U20')
+                op_map=np.empty((self.rng.shape[0] if self.ensemble is None else self.ensemble,),dtype='<U20')
                 op_map[ctrl_0_idx_dict[True]]='C0'
                 op_map[ctrl_0_idx_dict[False]]='C1'
                 op_map[ctrl_idx_dict[False]]='chaotic'
@@ -747,7 +779,7 @@ class CT_tensor:
         # norm=torch.sqrt(torch.tensordot(vec.conj(),vec,dims=(list(range(self.L_T)),list(range(self.L_T)))))
         norm=torch.sqrt(torch.einsum(vec.conj(),[...,0],vec,[...,0],[0]))
 
-        assert torch.all(norm != 0) , f'Cannot normalize: norm is zero {norm}'
+        # assert torch.all(norm != 0) , f'Cannot normalize: norm is zero {norm}'
         vec/=norm
     
     def inner_prob(self,vec,pos,n_list):
@@ -758,27 +790,29 @@ class CT_tensor:
         #     idx_list[p]=n
         idx_list[pos]=n_list
         vec_0=vec[tuple(idx_list)]
-        # inner_prod=torch.tensordot(vec_0.conj(),vec_0,dims=(list(range(vec_0.dim())),list(range(vec_0.dim())))).item()
-        inner_prod=torch.einsum(vec_0.conj(),[...,0],vec_0,[...,0],[0]).cpu().numpy() # overhead??
+        inner_prod=torch.einsum(vec_0.conj(),[...,0],vec_0,[...,0],[0])
 
-        assert np.all(np.abs(inner_prod.imag)<self._eps), f'probability for outcome 0 is not real {inner_prod}'
+        # assert torch.all(torch.abs(inner_prod.imag)<self._eps), f'probability for outcome 0 is not real {inner_prod}'
         inner_prod=inner_prod.real
-        assert np.all(inner_prod>-self._eps), f'probability for outcome 0 is not positive {inner_prod}'
-        inner_prod=np.maximum(0,inner_prod)
-        assert np.all(inner_prod<1+self._eps), f'probability for outcome 1 is not smaller than 1 {inner_prod}'
-        inner_prod=np.minimum(inner_prod,1)
+        # assert torch.all(inner_prod>-self._eps), f'probability for outcome 0 is not positive {inner_prod}'
+        # inner_prod=torch.maximum(0,inner_prod)
+        # assert torch.all(inner_prod<1+self._eps), f'probability for outcome 1 is not smaller than 1 {inner_prod}'
+        # inner_prod=torch.minimum(inner_prod,1)
+        inner_prod=torch.clamp_(inner_prod,min=0,max=1)
         return inner_prod
 
     def XL_tensor_(self,vec):
-        '''directly swap 0 and 1'''
-        if not self.ancilla:
-            # vec=vec[...,[1,0]]
-            vec[...,[0,1],:]=vec[...,[1,0],:]
+        '''directly swap 0 and 1
+        A new version using roll seems much faster than the in-place operation which is to my surprise'''
+        vec=torch.roll(vec,1,dims=self.L-1)
+        # if not self.ancilla:
+        #     vec[...,[0,1],:]=vec[...,[1,0],:]
+            
 
-        else:
-            # vec=vec[...,[1,0],:]
-            vec[...,[0,1],:,:]=vec[...,[1,0],:,:]
-        # return vec
+        # else:
+        #     vec[...,[0,1],:,:]=vec[...,[1,0],:,:]
+
+        return vec
 
     def P_tensor_(self,vec,n,pos=None):
         '''directly set zero at tensor[...,0] =0 for n==1 and tensor[...,1] =0 for n==0'
@@ -802,7 +836,7 @@ class CT_tensor:
         '''directly transpose the index of tensor
         There could be an alternative way of whether using tensor operation'''
         
-        idx_list=np.arange(self.L_T)
+        idx_list=torch.arange(self.L_T)
         # shift=-1 if left else 1
         if left:
             idx_list_2=list(range(1,self.L))+[0]
@@ -814,10 +848,21 @@ class CT_tensor:
         return vec.permute(idx_list_2)
 
     def S_tensor(self,vec,rng):
-        '''Scrambler only applies to the last two indices'''
-        U_4=torch.from_numpy(np.array([U(4,rng).astype(self.dtype['numpy']).reshape((2,)*4) for rng in rng]))
-        if self.gpu:
-            U_4=U_4.cuda()
+        '''Scrambler only applies to the last two indices
+        This is particular confusion, because when using np.rng, `rng` is interpreted as a list of `rng`, but when using torch seed, `rng` is reused as the len of list, CHANGE IT FOR CONSISTENCY LATER'''
+        if not isinstance(rng, int):
+            U_4=torch.from_numpy(np.array([U(4,rng).astype(self.dtype['numpy']).reshape((2,)*4) for rng in rng]))
+            if self.gpu:
+                U_4=U_4.cuda()
+        else:
+            # U_4=U(4,size=rng).astype(self.dtype['numpy'])
+            # U_4=torch.tensor(U_4,device=self.device).view((rng,2,2,2,2))
+
+
+            # Another advantage is the reproducibility
+            U_4=self.U(4,size=rng).view((rng,2,2,2,2))
+
+
         if not self.ancilla:
             # vec=torch.tensordot(vec,U_4,dims=([self.L-2,self.L-1],[2,3])).permute(list(range(self.L-2))+[self.L-1,self.L]+[self.L-2])
             vec=torch.einsum(vec,[...,0,1,2],U_4,[2,3,4,0,1],[...,3,4,2])
@@ -844,53 +889,120 @@ class CT_tensor:
             rs+=P0*1+(1-P0)*(-1)
         return rs/self.L
 
-    @lru_cache(maxsize=None)
-    def adder(self):
+    def adder_gpu(self):
         ''' This is not a full adder, which assume the leading digit in the input bitstring is zero (because of the T^{-1}R_L, the leading bit should always be zero).'''
         if self.xj==set([Fraction(1,3),Fraction(2,3)]):
-            bin_1_6=dec2bin(Fraction(1,6), self.L)
-            bin_1_6[-1]=1
-            bin_1_3=dec2bin(Fraction(1,3), self.L)
-            int_1_6=int(''.join(map(str,bin_1_6)),2)
-            int_1_3=int(''.join(map(str,bin_1_3)),2)
-            old_idx=np.vstack([np.arange(2**(self.L-2)),np.arange(2**(self.L-2),2**(self.L-1))])
-            adder_idx=np.vstack([int_1_6,int_1_3])
-            new_idx=(old_idx+adder_idx).flatten()
+            int_1_6=(int(Fraction(1,6)*2**self.L)|1)
+            int_1_3=(int(Fraction(1,3)*2**self.L))
+                
+            old_idx=torch.arange(2**(self.L-1),device=self.device).view((2,-1))
+            adder_idx=torch.tensor([[int_1_6],[int_1_3]],device=self.device)
+            new_idx=(old_idx+adder_idx)
             # handle the extra attractors, if 1..0x1, then 1..0(1-x)1, if 0..1x0, then 0..1(1-x)0 [shouldn't enter this branch..]
             mask_1=(new_idx&(1<<self.L-1) == (1<<self.L-1)) & (new_idx&(1<<2) == (0)) & (new_idx&(1) == (1))
             mask_2=(new_idx&(1<<self.L-1) == (0)) & (new_idx&(1<<2) == (1<<2)) & (new_idx&(1) == (0))
 
             new_idx[mask_1+mask_2]=new_idx[mask_1+mask_2]^(0b10)
 
-
-            return new_idx, old_idx.flatten()
-        if self.xj==set([0]):
-            return np.array([[]]), np.array([[]]),
-
-
-    def adder_tensor_(self,vec,new_idx,old_idx):
-        if (new_idx).size>0 and (old_idx).size>0:
+            not_new_idx=torch.ones(2**(self.L_T),dtype=bool,device=self.device)
+            not_new_idx[new_idx]=False
             
-            vec_flatten=vec.view((-1,vec.shape[-1]))    # create a reference
+
+            return new_idx, old_idx, not_new_idx
+        if self.xj==set([0]):
+            return torch.tensor([]), torch.tensor([]),torch.tensor([])
+
+    def adder_cpu(self):
+        ''' This is not a full adder, which assume the leading digit in the input bitstring is zero (because of the T^{-1}R_L, the leading bit should always be zero).'''
+        if self.xj==set([Fraction(1,3),Fraction(2,3)]):
+            int_1_6=(int(Fraction(1,6)*2**self.L)|1)
+            int_1_3=(int(Fraction(1,3)*2**self.L))
+                
+            
+            old_idx=np.arange(2**(self.L-1)).reshape((2,-1))
+            adder_idx=np.array([[int_1_6],[int_1_3]])
+            new_idx=(old_idx+adder_idx)
+            # handle the extra attractors, if 1..0x1, then 1..0(1-x)1, if 0..1x0, then 0..1(1-x)0 [shouldn't enter this branch..]
+            mask_1=(new_idx&(1<<self.L-1) == (1<<self.L-1)) & (new_idx&(1<<2) == (0)) & (new_idx&(1) == (1))
+            mask_2=(new_idx&(1<<self.L-1) == (0)) & (new_idx&(1<<2) == (1<<2)) & (new_idx&(1) == (0))
+
+            new_idx[mask_1+mask_2]=new_idx[mask_1+mask_2]^(0b10)
+
+            not_new_idx=np.ones(2**(self.L_T),dtype=bool,)
+            not_new_idx[new_idx]=False
+
+
+            return new_idx, old_idx, not_new_idx
+        if self.xj==set([0]):
+            return np.array([]), np.array([]), np.array([])
+
+
+    def adder_tensor_(self,vec):
+        new_idx=self.new_idx.flatten()
+        old_idx=self.old_idx.flatten()
+        not_new_idx=self.not_new_idx.flatten()
+        if (new_idx).shape[0]>0 and (old_idx).shape[0]>0:
+            
+            vec_flatten=vec.view((-1,vec.shape[-1]))    
             if self.ancilla:
-                new_idx=np.hstack([new_idx<<1,(new_idx<<1)+1])
-                old_idx=np.hstack([old_idx<<1,(old_idx<<1)+1])
+                new_idx=torch.hstack((new_idx<<1,(new_idx<<1)+1))
+                old_idx=torch.hstack((old_idx<<1,(old_idx<<1)+1))
 
             vec_flatten[new_idx,:]=vec_flatten[old_idx,:]
             
-            not_new_map=np.ones(2**(self.L_T),dtype=bool)
-            not_new_map[new_idx]=False
-            vec_flatten[not_new_map,:]=0
+            vec_flatten[not_new_idx,:]=0
 
     def generate_binary(self,idx_list,p):
-        '''Generate boolean list, given probability `p` and seed `self.rng[idx]`'''
-        if isinstance(p, float) or isinstance(p, int):
-            p_list=[p]*len(idx_list)
-        else:
-            assert len(idx_list) == len(p), f'len of idx_list {len(idx_list)} is not same as len of p {len(p)}'
-            p_list=p
+        '''Generate boolean list, given probability `p` and seed `self.rng[idx]`
+        scalar `p` is verbose, but this is for consideration of speed'''
+        if self.ensemble is None:
+            # idx_dict={True:[],False:[]}
+            true_list=[]
+            false_list=[]
+            if isinstance(p, float) or isinstance(p, int):
+                for idx in idx_list:
+                    random=self.rng[idx].random()
+                    # boolean=(random<=p)
+                    # idx_dict[boolean].append(idx)
+                    if random<=p:
+                        true_list.append(idx)
+                    else:
+                        false_list.append(idx)
+            else:
+                assert len(idx_list) == len(p), f'len of idx_list {len(idx_list)} is not same as len of p {len(p)}'
+                for idx,p in zip(idx_list,p):
+                    random=self.rng[idx].random()
+                    # boolean=torch.equal((random<=p),self.tensor_true)
+                    # idx_dict[boolean].append(idx)
+                    if random<=p:
+                        true_list.append(idx)
+                    else:
+                        false_list.append(idx)
 
-        idx_dict={True:[],False:[]}
-        for idx,p in zip(idx_list,p_list):
-            idx_dict[self.rng[idx].random()<=p].append(idx)
-        return idx_dict
+            idx_dict={True:torch.tensor(true_list,dtype=int,device=self.device),False:torch.tensor(false_list,dtype=int,device=self.device)}
+            return idx_dict
+        else:
+            if isinstance(p, float) or isinstance(p, int):
+                p=p*torch.ones((idx_list.shape[0],),device=self.device)
+
+            p_rand=torch.bernoulli(p)
+            true_idx=torch.nonzero(p_rand,as_tuple=True)[0]
+            false_idx=torch.nonzero(1-p_rand,as_tuple=True)[0]
+            # p_rand=torch.rand((idx_list.shape[0],),device=self.device)
+            
+            true_tensor=idx_list[true_idx]
+            false_tensor=idx_list[false_idx]
+            idx_dict={True:true_tensor,False:false_tensor}
+            return idx_dict
+
+
+    def U(self,n,size,):
+        dtype=torch.float64 if self.dtype['torch']==torch.complex128 else torch.float32
+        im = torch.randn((size,n, n), device=self.device,dtype=dtype)
+        re = torch.randn((size,n, n), device=self.device,dtype=dtype)
+        z=torch.complex(re,im)
+        Q,R=torch.linalg.qr(z)
+        r_diag=torch.diagonal(R,dim1=-2,dim2=-1)
+        Lambda=torch.diag_embed(r_diag/torch.abs(r_diag))
+        Q=torch.einsum(Q,[0,1,2],Lambda,[0,2,3],[0,1,3])
+        return Q

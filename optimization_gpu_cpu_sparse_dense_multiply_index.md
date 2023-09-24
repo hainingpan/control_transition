@@ -145,9 +145,11 @@ GPU: RTX A4000  (6144 CUDA cores, 192 Tensor cores, 48 RT cores, 16GB GDDR6 RAM)
 1. JIT
 2. save in time, checkpoint fashion
 3. work with multiple GPU
-4. construct from tensor (fix it), 
+4. construct from tensor (fixed it), 
 5. memory management, what is the max usage of memory
 6. remove numpy functions as much as possible (ok, nothing really change, maybe because numpy are mostly for slicing indices)
+7. is there a way that, besides sampling using Born rule, I can calculate the prob for each config, and then only simulate those significant ones?
+8. SVD on GPU is very slow?? (https://github.com/pytorch/pytorch/issues/41306)
 
 
 ```

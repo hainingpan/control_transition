@@ -1040,6 +1040,290 @@ Line #      Hits         Time  Per Hit   % Time  Line Contents
    ```
 Alright, at this stage, I don't think I can have any method other than put the whole random generator to torch.
 
+Okay, before that, I notice an issue with slicing, namely, when it is advanced index (using a list), the new tensor cannot change in-place. So I have to combine the "slicing" and "function calling" together.
+
+```
+Using cuda
+Timer unit: 1e-09 s
+
+Total time: 5.04746 s
+File: /tmp/ipykernel_785267/2403778251.py
+Function: random_control at line 97
+
+Line #      Hits         Time  Per Hit   % Time  Line Contents
+==============================================================
+    97                                               def random_control(self,p_ctrl,p_proj,vec=None):
+    98                                                   '''the competition between chaotic and random, where the projection can only be applied after the unitary
+    99                                                   Notation: L-1 is the last digits'''
+   100        50      45943.0    918.9      0.0          if vec is None:
+   101        50      31549.0    631.0      0.0              vec=self.vec
+   102                                           
+   103        50 3367998329.0 67359966.6     66.7          ctrl_idx_dict=self.generate_binary(torch.arange(self.rng.shape[0]), p_ctrl)
+   104        50      56308.0   1126.2      0.0          ctrl_0_idx_dict={}
+   105        50    1372882.0  27457.6      0.0          if len(ctrl_idx_dict[True])>0:
+   106        50    6904433.0 138088.7      0.1              vec_ctrl=vec[...,ctrl_idx_dict[True]]
+   107        50   29245978.0 584919.6      0.6              p_0= self.inner_prob(vec=vec_ctrl,pos=[self.L-1],n_list=[0]) # prob for 0
+   108        50 1485042839.0 29700856.8     29.4              ctrl_0_idx_dict=self.generate_binary(ctrl_idx_dict[True], p_0)
+   109       100     267243.0   2672.4      0.0              for key,idx in ctrl_0_idx_dict.items():
+   110        59     416852.0   7065.3      0.0                  if len(idx)>0:
+   111        59  155338830.0 2632861.5      3.1                      vec[...,idx]=self.op_list[f'C{0*key+1*(1-key)}'](vec[...,idx])
+   112                                           
+   113        50      18296.0    365.9      0.0          proj_idx_dict={} # {pos: {True: .., False:..}} whether pos is projected
+   114        50      11950.0    239.0      0.0          proj_0_idx_dict={} # {pos: {True:.., False: ..}} if projected, whether it is projected to 0 
+   115        50     540075.0  10801.5      0.0          if len(ctrl_idx_dict[False])>0:
+   116                                                       vec[...,ctrl_idx_dict[False]]=self.op_list['chaotic'](vec[...,ctrl_idx_dict[False]],self.rng[ctrl_idx_dict[False].cpu().numpy()])
+   117                                                       for pos in [self.L-1,self.L-2]:
+   118                                                           proj_idx_dict[pos]=self.generate_binary(ctrl_idx_dict[False], p_proj)
+   119                                                           if len(proj_idx_dict[pos][True])>0:
+   120                                                               vec_p=vec[...,proj_idx_dict[pos][True]]
+   121                                                               p_2 = self.inner_prob(vec=vec_p,pos=[pos], n_list=[0])
+   122                                                               proj_0_idx_dict[pos]=self.generate_binary(proj_idx_dict[pos][True], p_2)
+   123                                                               for key,idx in proj_0_idx_dict[pos].items():
+   124                                                                   if len(idx)>0:
+   125                                                                       vec[...,idx]=self.op_list[f'P{pos}{0*key+1*(1-key)}'](vec[...,idx])
+   126        50     171743.0   3434.9      0.0          self.update_history(vec,ctrl_idx_dict,ctrl_0_idx_dict,proj_idx_dict,proj_0_idx_dict)
+   ```
+
+   Ok, start from here. Now even if I combine slicing and function calling, the cost it not that large, because the slice is a proper tensor.
+
+   So next target, change the rng from numpy to completely torch.
+
+```
+Using cuda
+Timer unit: 1e-09 s
+
+Total time: 4.5508 s
+File: /tmp/ipykernel_913885/2868114331.py
+Function: random_control at line 118
+
+Line #      Hits         Time  Per Hit   % Time  Line Contents
+==============================================================
+   118                                               def random_control(self,p_ctrl,p_proj,vec=None):
+   119                                                   '''the competition between chaotic and random, where the projection can only be applied after the unitary
+   120                                                   Notation: L-1 is the last digits'''
+   121        50      42361.0    847.2      0.0          if vec is None:
+   122        50      25653.0    513.1      0.0              vec=self.vec
+   123                                           
+   124        50 3431885922.0 68637718.4     75.4          ctrl_idx_dict=self.generate_binary(torch.arange(self.rng.shape[0] if self.ensemble is None else self.ensemble,device=self.device), p_ctrl)
+   125        50      27221.0    544.4      0.0          ctrl_0_idx_dict={}
+   126        50    1062383.0  21247.7      0.0          if len(ctrl_idx_dict[True])>0:
+   127        50    1994559.0  39891.2      0.0              vec_ctrl=vec[...,ctrl_idx_dict[True]]
+   128        50   24019214.0 480384.3      0.5              p_0= self.inner_prob(vec=vec_ctrl,pos=[self.L-1],n_list=[0]) # prob for 0
+   129        50 1004478033.0 20089560.7     22.1              ctrl_0_idx_dict=self.generate_binary(ctrl_idx_dict[True], p_0)
+   130       100     188910.0   1889.1      0.0              for key,idx in ctrl_0_idx_dict.items():
+   131        60     349457.0   5824.3      0.0                  if len(idx)>0:
+   132        60   86054187.0 1434236.4      1.9                      vec[...,idx]=self.op_list[f'C{0*key+1*(1-key)}'](vec[...,idx])
+   133                                           
+   134        50      17904.0    358.1      0.0          proj_idx_dict={} # {pos: {True: .., False:..}} whether pos is projected
+   135        50      11421.0    228.4      0.0          proj_0_idx_dict={} # {pos: {True:.., False: ..}} if projected, whether it is projected to 0 
+   136        50     475174.0   9503.5      0.0          if len(ctrl_idx_dict[False])>0:
+   137                                                       rng_ctrl=self.rng[ctrl_idx_dict[False].cpu().numpy()] if self.ensemble is None else ctrl_idx_dict[False].shape[0]
+   138                                                       vec[...,ctrl_idx_dict[False]]=self.op_list['chaotic'](vec[...,ctrl_idx_dict[False]],rng_ctrl)
+   139                                                       for pos in [self.L-1,self.L-2]:
+   140                                                           proj_idx_dict[pos]=self.generate_binary(ctrl_idx_dict[False], p_proj)
+   141                                                           if len(proj_idx_dict[pos][True])>0:
+   142                                                               vec_p=vec[...,proj_idx_dict[pos][True]]
+   143                                                               p_2 = self.inner_prob(vec=vec_p,pos=[pos], n_list=[0])
+   144                                                               proj_0_idx_dict[pos]=self.generate_binary(proj_idx_dict[pos][True], p_2)
+   145                                                               for key,idx in proj_0_idx_dict[pos].items():
+   146                                                                   if len(idx)>0:
+   147                                                                       vec[...,idx]=self.op_list[f'P{pos}{0*key+1*(1-key)}'](vec[...,idx])
+   148        50     168547.0   3370.9      0.0          self.update_history(vec,ctrl_idx_dict,ctrl_0_idx_dict,proj_idx_dict,proj_0_idx_dict)
+```
+
+Again this is a version using rng directly on torch but the `generate_binary` still takes a lot of time. Let me go deeper
+
+```
+Using cuda
+Timer unit: 1e-09 s
+
+Total time: 4.42914 s
+File: /tmp/ipykernel_913885/2868114331.py
+Function: generate_binary at line 397
+
+Line #      Hits         Time  Per Hit   % Time  Line Contents
+==============================================================
+   397                                               def generate_binary(self,idx_list,p):
+   398                                                   '''Generate boolean list, given probability `p` and seed `self.rng[idx]`
+   399                                                   scalar `p` is verbose, but this is for consideration of speed'''
+   400       100     192734.0   1927.3      0.0          if self.ensemble is None:
+   401                                                       # idx_dict={True:[],False:[]}
+   402                                                       true_list=[]
+   403                                                       false_list=[]
+   404                                                       if isinstance(p, float) or isinstance(p, int):
+   405                                                           for idx in idx_list:
+   406                                                               random=self.rng[idx].random()
+   407                                                               # boolean=(random<=p)
+   408                                                               # idx_dict[boolean].append(idx)
+   409                                                               if random<=p:
+   410                                                                   true_list.append(idx)
+   411                                                               else:
+   412                                                                   false_list.append(idx)
+   413                                                       else:
+   414                                                           assert len(idx_list) == len(p), f'len of idx_list {len(idx_list)} is not same as len of p {len(p)}'
+   415                                                           for idx,p in zip(idx_list,p):
+   416                                                               random=self.rng[idx].random()
+   417                                                               # boolean=torch.equal((random<=p),self.tensor_true)
+   418                                                               # idx_dict[boolean].append(idx)
+   419                                                               if random<=p:
+   420                                                                   true_list.append(idx)
+   421                                                               else:
+   422                                                                   false_list.append(idx)
+   423                                           
+   424                                                       idx_dict={True:torch.tensor(true_list,dtype=int,device=self.device),False:torch.tensor(false_list,dtype=int,device=self.device)}
+   425                                                       return idx_dict
+   426                                                   else:
+   427       100    4317988.0  43179.9      0.1              p_rand=torch.rand((idx_list.shape[0],),device=self.device)
+   428                                                       
+   429       100    2940418.0  29404.2      0.1              true_boolean=(p_rand<=p)
+   430       100 4409005967.0 44090059.7     99.5              true_tensor=idx_list[true_boolean]
+   431       100   12204489.0 122044.9      0.3              false_tensor=idx_list[~true_boolean]
+   432       100     402895.0   4028.9      0.0              idx_dict={True:true_tensor,False:false_tensor}
+   433       100      71879.0    718.8      0.0              return idx_dict
+```
+
+It is clear that slicing using mask taking a lot of time. Therefore, I can use `torch.binomial`. But I didn't make it work, because ultimately nonzero is also very slow...
+
+**For Bernoulli map, I also change the U generation to QR decomposition**
+
+```
+
+Using cuda
+Timer unit: 1e-09 s
+
+Total time: 6.90419 s
+File: /tmp/ipykernel_1012274/620717040.py
+Function: random_control at line 118
+
+Line #      Hits         Time  Per Hit   % Time  Line Contents
+==============================================================
+   118                                               def random_control(self,p_ctrl,p_proj,vec=None):
+   119                                                   '''the competition between chaotic and random, where the projection can only be applied after the unitary
+   120                                                   Notation: L-1 is the last digits'''
+   121        50      60091.0   1201.8      0.0          if vec is None:
+   122        50      52583.0   1051.7      0.0              vec=self.vec
+   123                                           
+   124        50   10846444.0 216928.9      0.2          ctrl_idx_dict=self.generate_binary(torch.arange(self.rng.shape[0] if self.ensemble is None else self.ensemble,device=self.device), p_ctrl)
+   125        50      20823.0    416.5      0.0          ctrl_0_idx_dict={}
+   126        50     295332.0   5906.6      0.0          if len(ctrl_idx_dict[True])>0:
+   127                                                       vec_ctrl=vec[...,ctrl_idx_dict[True]]
+   128                                                       p_0= self.inner_prob(vec=vec_ctrl,pos=[self.L-1],n_list=[0]) # prob for 0
+   129                                                       ctrl_0_idx_dict=self.generate_binary(ctrl_idx_dict[True], p_0)
+   130                                                       for key,idx in ctrl_0_idx_dict.items():
+   131                                                           if len(idx)>0:
+   132                                                               vec[...,idx]=self.op_list[f'C{0*key+1*(1-key)}'](vec[...,idx])
+   133                                           
+   134        50      14885.0    297.7      0.0          proj_idx_dict={} # {pos: {True: .., False:..}} whether pos is projected
+   135        50      12414.0    248.3      0.0          proj_0_idx_dict={} # {pos: {True:.., False: ..}} if projected, whether it is projected to 0 
+   136        50     118181.0   2363.6      0.0          if len(ctrl_idx_dict[False])>0:
+   137        50      42886.0    857.7      0.0              rng_ctrl=self.rng[ctrl_idx_dict[False].cpu().numpy()] if self.ensemble is None else ctrl_idx_dict[False].shape[0]
+   138        50  433725150.0 8674503.0      6.3              vec[...,ctrl_idx_dict[False]]=self.op_list['chaotic'](vec[...,ctrl_idx_dict[False]],rng_ctrl)
+   139       100     156032.0   1560.3      0.0              for pos in [self.L-1,self.L-2]:
+   140       100 6456964375.0 64569643.8     93.5                  proj_idx_dict[pos]=self.generate_binary(ctrl_idx_dict[False], p_proj)
+   141       100    1653439.0  16534.4      0.0                  if len(proj_idx_dict[pos][True])>0:
+   142                                                               vec_p=vec[...,proj_idx_dict[pos][True]]
+   143                                                               p_2 = self.inner_prob(vec=vec_p,pos=[pos], n_list=[0])
+   144                                                               proj_0_idx_dict[pos]=self.generate_binary(proj_idx_dict[pos][True], p_2)
+   145                                                               for key,idx in proj_0_idx_dict[pos].items():
+   146                                                                   if len(idx)>0:
+   147                                                                       vec[...,idx]=self.op_list[f'P{pos}{0*key+1*(1-key)}'](vec[...,idx])
+   148        50     222862.0   4457.2      0.0          self.update_history(vec,ctrl_idx_dict,ctrl_0_idx_dict,proj_idx_dict,proj_0_idx_dict)
+   ```
+
+   Again the generate_binary is the bottleneck, but maybe I can also reduce the `Bernoulli_map`->`S_tensor` :
+   ```
+ Using cuda
+Timer unit: 1e-09 s
+
+Total time: 0.238546 s
+File: /tmp/ipykernel_1012274/2187709901.py
+Function: S_tensor at line 301
+
+Line #      Hits         Time  Per Hit   % Time  Line Contents
+==============================================================
+   301                                               def S_tensor(self,vec,rng):
+   302                                                   '''Scrambler only applies to the last two indices
+   303                                                   This is particular confusion, because when using np.rng, `rng` is interpreted as a list of `rng`, but when using torch seed, `rng` is reused as the len of list, CHANGE IT FOR CONSISTENCY LATER'''
+   304        50     119523.0   2390.5      0.1          if not isinstance(rng, int):
+   305                                                       U_4=torch.from_numpy(np.array([U(4,rng).astype(self.dtype['numpy']).reshape((2,)*4) for rng in rng]))
+   306                                                       if self.gpu:
+   307                                                           U_4=U_4.cuda()
+   308                                                   else:
+   309        50   66369691.0 1327393.8     27.8              U_4=U(4,size=rng).astype(self.dtype['numpy'])
+   310        50  150270459.0 3005409.2     63.0              U_4=torch.tensor(U_4,device=self.device).view((rng,2,2,2,2))
+   311                                                       # U_4=self.U(4,size=rng).view((rng,2,2,2,2))
+   312                                           
+   313                                           
+   314        50      77373.0   1547.5      0.0          if not self.ancilla:
+   315                                                       # vec=torch.tensordot(vec,U_4,dims=([self.L-2,self.L-1],[2,3])).permute(list(range(self.L-2))+[self.L-1,self.L]+[self.L-2])
+   316        50   21685323.0 433706.5      9.1              vec=torch.einsum(vec,[...,0,1,2],U_4,[2,3,4,0,1],[...,3,4,2])
+   317        50      23564.0    471.3      0.0              return vec
+   318                                                   else:
+   319                                                       # vec=torch.tensordot(vec,U_4,dims=([self.L-2,self.L-1],[2,3])).permute(list(range(self.L-2))+[self.L,self.L+1]+[self.L-2,self.L-1])
+   320                                                       vec=torch.einsum(vec,[...,0,1,2,3],U_4,[3,4,5,0,1],[...,4,5,2,3])
+   321                                                       return vec
+   ```
+   Clearly, `torch.tensor` is taking a lot of time, guess this is because they need to copy to GPU
+   ```
+   Using cuda
+Timer unit: 1e-09 s
+
+Total time: 0.44029 s
+File: /tmp/ipykernel_1012274/3333651671.py
+Function: S_tensor at line 301
+
+Line #      Hits         Time  Per Hit   % Time  Line Contents
+==============================================================
+   301                                               def S_tensor(self,vec,rng):
+   302                                                   '''Scrambler only applies to the last two indices
+   303                                                   This is particular confusion, because when using np.rng, `rng` is interpreted as a list of `rng`, but when using torch seed, `rng` is reused as the len of list, CHANGE IT FOR CONSISTENCY LATER'''
+   304        50     123754.0   2475.1      0.0          if not isinstance(rng, int):
+   305                                                       U_4=torch.from_numpy(np.array([U(4,rng).astype(self.dtype['numpy']).reshape((2,)*4) for rng in rng]))
+   306                                                       if self.gpu:
+   307                                                           U_4=U_4.cuda()
+   308                                                   else:
+   309                                                       # U_4=U(4,size=rng).astype(self.dtype['numpy'])
+   310                                                       # U_4=torch.tensor(U_4,device=self.device).view((rng,2,2,2,2))
+   311                                           
+   312        50  430913501.0 8618270.0     97.9              U_4=self.U(4,size=rng).view((rng,2,2,2,2))
+   313                                           
+   314                                           
+   315        50      89408.0   1788.2      0.0          if not self.ancilla:
+   316                                                       # vec=torch.tensordot(vec,U_4,dims=([self.L-2,self.L-1],[2,3])).permute(list(range(self.L-2))+[self.L-1,self.L]+[self.L-2])
+   317        50    9147798.0 182956.0      2.1              vec=torch.einsum(vec,[...,0,1,2],U_4,[2,3,4,0,1],[...,3,4,2])
+   318        50      15848.0    317.0      0.0              return vec
+   319                                                   else:
+   320                                                       # vec=torch.tensordot(vec,U_4,dims=([self.L-2,self.L-1],[2,3])).permute(list(range(self.L-2))+[self.L,self.L+1]+[self.L-2,self.L-1])
+   321                                                       vec=torch.einsum(vec,[...,0,1,2,3],U_4,[3,4,5,0,1],[...,4,5,2,3])
+   322                                                       return vec
+   ```
+
+   But on the other hand, Constructing it directly on QR does not mean a faster speed.
+   This is probably because the `self.U` is poorly written. Let's dig into it.
+   ```
+   Using cuda
+Timer unit: 1e-09 s
+
+Total time: 0.425079 s
+File: /tmp/ipykernel_1012274/3764402697.py
+Function: U at line 450
+
+Line #      Hits         Time  Per Hit   % Time  Line Contents
+==============================================================
+   450                                               def U(self,n,size,):
+   451        50     170698.0   3414.0      0.0          dtype=torch.float64 if torch.float64 else torch.float32
+   452        50    2304676.0  46093.5      0.5          im = torch.randn((size,n, n), device=self.device,dtype=dtype)
+   453        50     616414.0  12328.3      0.1          re = torch.randn((size,n, n), device=self.device,dtype=dtype)
+   454        50    1716519.0  34330.4      0.4          z=torch.complex(re,im)
+   455        50  392015417.0 7840308.3     92.2          Q,R=torch.linalg.qr(z)
+   456        50    2586147.0  51722.9      0.6          r_diag=torch.diagonal(R,dim1=-2,dim2=-1)
+   457        50   11548879.0 230977.6      2.7          Lambda=torch.diag_embed(r_diag/torch.abs(r_diag))
+   458        50   14104379.0 282087.6      3.3          Q=torch.einsum(Q,[0,1,2],Lambda,[0,2,3],[0,1,3])
+   459        50      15770.0    315.4      0.0          return Q
+   ```
+Ok I don't have any better way to improve `qr`, Also, because the bottleneck now is the `generate_binary`. I think this is pretty much the end of the optimization so far.
+
+
 
 
 
@@ -1129,6 +1413,7 @@ Line #      Hits         Time  Per Hit   % Time  Line Contents
    122        50     188090.0   3761.8      0.0          self.update_history(vec,ctrl_idx_dict,ctrl_0_idx_dict,proj_idx_dict,proj_0_idx_dict)
 ```
 Look slicing is definitely an issue here. So why?  Is that because vec is not contiguous at that point? That simply does not make sense... because control is the same slicing but took much little time than this. Also, 
+I know the issue, they are contiguous, it is just that the slicing index is not a proper tensor , instead they are list of tensors
 
 
 

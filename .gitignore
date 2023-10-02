@@ -2,3 +2,6 @@
 *.out
 *.pickle
 .python-version
+*.error
+*.output
+*.log

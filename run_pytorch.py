@@ -3,7 +3,7 @@ import numpy as np
 import pickle
 import argparse
 import time
-from tqdm import tqdm
+# from tqdm import tqdm
 from fractions import Fraction
 import torch
 import gc
@@ -30,7 +30,8 @@ def run_tensor(inputs):
     return O,SA, TMI
 
 if __name__=="__main__":
-    print(torch.cuda.get_device_name(),flush=True)
+    if torch.cuda.is_available():
+        print(torch.cuda.get_device_name(),flush=True)
     parser=argparse.ArgumentParser()
     parser.add_argument('--es','-es',default=10,type=int,help='Ensemble size (default: 10).')
     parser.add_argument('--seed','-seed',default=0,type=int,help='Random seed (default: 0).')
@@ -54,7 +55,7 @@ if __name__=="__main__":
 
     # results=list(tqdm(map(run_tensor,inputs),total=len(inputs)))
     results=[]
-    for param in tqdm(inputs):
+    for param in (inputs):
         result=run_tensor(param)
         result_cpu=[r.cpu() for r in result]
         results.append(result_cpu)
@@ -67,7 +68,7 @@ if __name__=="__main__":
 
     rs=results.reshape((L_list.shape[0],p_ctrl_list.shape[0],p_proj_list.shape[0],3,args.es))
     O_map,EE_map,TMI_map=rs[:,:,:,0,:],rs[:,:,:,1,:],rs[:,:,:,2,:]
-    with open('CT_En{:d}_pctrl({:.2f},{:.2f},{:.0f})_pproj({:.2f},{:.2f},{:.0f})_L({:d},{:d},{:d})_xj({:s})_seed{:d}_es{:d}{:s}{:s}.pickle'.format(args.es,*args.p_ctrl,*args.p_proj,*args.L,args.xj.replace('/','-'),args.seed,args.es,'_128' if args.complex128 else '_64','_anc'*args.ancilla),'wb') as f:
+    with open('CT_En{:d}_pctrl({:.2f},{:.2f},{:.0f})_pproj({:.2f},{:.2f},{:.0f})_L({:d},{:d},{:d})_xj({:s})_seed{:d}{:s}{:s}.pickle'.format(args.es,*args.p_ctrl,*args.p_proj,*args.L,args.xj.replace('/','-'),args.seed,'_128' if args.complex128 else '_64','_anc'*args.ancilla),'wb') as f:
         pickle.dump({"O":O_map,"EE":EE_map,"TMI":TMI_map,"args":args}, f)
 
     print('Time elapsed: {:.4f}'.format(time.time()-st))

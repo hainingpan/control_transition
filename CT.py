@@ -1,7 +1,7 @@
 import numpy as np
 from functools import reduce
-import scipy.sparse as sp
-import scipy
+# import scipy.sparse as sp
+# import scipy
 from fractions import Fraction
 from functools import partial, lru_cache
 import torch
@@ -619,8 +619,8 @@ class CT_tensor:
             vec[(1,)*self.L_T]=1/np.sqrt(2)
 
             # Randomize it 
-            # for _ in range(self.L**2):
-            #     vec=self.Bernoulli_map(vec,self.rng)
+            for _ in range(self.L**2):
+                vec=self.Bernoulli_map(vec,len(self.x0))
         return vec
     
     def _initialize_op(self):

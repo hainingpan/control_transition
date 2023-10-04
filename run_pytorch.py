@@ -25,10 +25,16 @@ def run_tensor(inputs):
     for _ in range(T_max):
         ct.random_control(p_ctrl=p_ctrl,p_proj=p_proj)
         torch.cuda.empty_cache()
-    O=ct.order_parameter()
-    SA=ct.half_system_entanglement_entropy()
-    TMI=ct.tripartite_mutual_information(np.arange(ct.L//4),np.arange(ct.L//4)+ct.L//4,np.arange(ct.L//4)+(ct.L//4)*2,selfaverage=False)
-    return O,SA, TMI
+    if not ancilla:
+        O=ct.order_parameter()
+        SA=ct.half_system_entanglement_entropy()
+        TMI=ct.tripartite_mutual_information(np.arange(ct.L//4),np.arange(ct.L//4)+ct.L//4,np.arange(ct.L//4)+(ct.L//4)*2,selfaverage=False)
+        return O,SA, TMI
+    else:
+        SA=ct.von_Neumann_entropy_pure([ct.L])
+        return SA,
+
+    
 
 if __name__=="__main__":
     if torch.cuda.is_available():
@@ -67,9 +73,18 @@ if __name__=="__main__":
 
     results=torch.cat([torch.cat(tensors) for tensors in results])
 
-    rs=results.reshape((L_list.shape[0],p_ctrl_list.shape[0],p_proj_list.shape[0],3,args.es))
-    O_map,EE_map,TMI_map=rs[:,:,:,0,:],rs[:,:,:,1,:],rs[:,:,:,2,:]
+    if not args.ancilla:
+
+        rs=results.reshape((L_list.shape[0],p_ctrl_list.shape[0],p_proj_list.shape[0],3,args.es))
+        O_map,EE_map,TMI_map=rs[:,:,:,0,:],rs[:,:,:,1,:],rs[:,:,:,2,:]
+        save_dict={"O":O_map,"EE":EE_map,"TMI":TMI_map,"args":args}
+    else:
+        rs=results.reshape((L_list.shape[0],p_ctrl_list.shape[0],p_proj_list.shape[0],1,args.es))
+        SA_map=rs[:,:,:,0,:]
+        save_dict={"SA":SA_map,"args":args}
+
+
     with open('CT_En{:d}_pctrl({:.2f},{:.2f},{:.0f})_pproj({:.2f},{:.2f},{:.0f})_L({:d},{:d},{:d})_xj({:s})_seed{:d}{:s}{:s}.pickle'.format(args.es,*args.p_ctrl,*args.p_proj,*args.L,args.xj.replace('/','-'),args.seed,'_128' if args.complex128 else '_64','_anc'*args.ancilla),'wb') as f:
-        pickle.dump({"O":O_map,"EE":EE_map,"TMI":TMI_map,"args":args}, f)
+        pickle.dump(save_dict, f)
 
     print('Time elapsed: {:.4f}'.format(time.time()-st))

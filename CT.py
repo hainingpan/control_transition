@@ -864,7 +864,6 @@ class CT_tensor:
             # U_4=U(4,size=rng).astype(self.dtype['numpy'])
             # U_4=torch.tensor(U_4,device=self.device).view((rng,2,2,2,2))
 
-
             # Another advantage is the reproducibility
             U_4=self.U(4,size=rng).view((rng,2,2,2,2))
 
@@ -930,7 +929,6 @@ class CT_tensor:
             vec_flatten=vec.view((-1,vec.shape[-1]))    
             vec_flatten[new_idx,:]=vec_flatten[old_idx,:]
             vec_flatten[not_new_idx,:]=0
-            pass
 
     def generate_binary(self,idx_list,p):
         '''Generate boolean list, given probability `p` and seed `self.rng[idx]`

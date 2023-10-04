@@ -19,9 +19,10 @@ def convert_to_fraction(fraction_str):
     return fractions
 
 def run_tensor(inputs):
-    L,p_ctrl,p_proj,xj,complex128,seed,ensemble=inputs
-    ct=CT_tensor(L=L,x0=None,seed=seed,history=False,xj=xj,gpu=True,complex128=complex128,_eps=1e-5,ensemble=ensemble)
-    for _ in range(2*ct.L**2):
+    L,p_ctrl,p_proj,xj,complex128,seed,ancilla,ensemble=inputs
+    ct=CT_tensor(L=L,x0=None,seed=seed,history=False,xj=xj,gpu=True,complex128=complex128,_eps=1e-5,ensemble=ensemble,ancilla=ancilla)
+    T_max=ct.L**2//2 if ancilla else 2*ct.L**2
+    for _ in range(T_max):
         ct.random_control(p_ctrl=p_ctrl,p_proj=p_proj)
         torch.cuda.empty_cache()
     O=ct.order_parameter()
@@ -51,7 +52,7 @@ if __name__=="__main__":
     p_ctrl_list=np.linspace(args.p_ctrl[0],args.p_ctrl[1],int(args.p_ctrl[2]))
     p_proj_list=np.linspace(args.p_proj[0],args.p_proj[1],int(args.p_proj[2]))
     st=time.time()
-    inputs=[(L,p_ctrl,p_proj,xj,args.complex128,args.seed,args.es) for L in L_list for p_ctrl in p_ctrl_list for p_proj in p_proj_list]
+    inputs=[(L,p_ctrl,p_proj,xj,args.complex128,args.seed,args.ancilla,args.es) for L in L_list for p_ctrl in p_ctrl_list for p_proj in p_proj_list]
 
     # results=list(tqdm(map(run_tensor,inputs),total=len(inputs)))
     results=[]

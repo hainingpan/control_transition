@@ -1,7 +1,7 @@
 import numpy as np
 from functools import reduce
-# import scipy.sparse as sp
-# import scipy
+import scipy.sparse as sp
+import scipy
 from fractions import Fraction
 from functools import partial, lru_cache
 import torch
@@ -547,6 +547,8 @@ def bin_pad(x,L):
     '''convert a int to binary form with 0 padding to the left'''
     return (bin(x)[2:]).rjust(L,'0')
 
+
+
 class CT_tensor:
     def __init__(self,L,history=False,seed=None,x0=None,xj=set([Fraction(1,3),Fraction(2,3)]),_eps=1e-10, ancilla=False,gpu=False,complex128=True,ensemble=None):
         '''the tensor is saved as (0,1,...L-1, ancilla, ensemble)
@@ -619,8 +621,12 @@ class CT_tensor:
             vec[(1,)*self.L_T]=1/np.sqrt(2)
 
             # Randomize it 
-            for _ in range(self.L**2):
-                vec=self.Bernoulli_map(vec,len(self.x0))
+            if self.ensemble is None:
+                for _ in range(self.L**2):
+                    vec=self.Bernoulli_map(vec,self.rng)
+            else:
+                for _ in range(self.L**2):
+                    vec=self.Bernoulli_map(vec,len(self.x0))
         return vec
     
     def _initialize_op(self):
@@ -849,7 +855,7 @@ class CT_tensor:
 
     def S_tensor(self,vec,rng):
         '''Scrambler only applies to the last two indices
-        This is particular confusion, because when using np.rng, `rng` is interpreted as a list of `rng`, but when using torch seed, `rng` is reused as the len of list, CHANGE IT FOR CONSISTENCY LATER'''
+        This is a bit confusing, because when using np.rng, `rng` is interpreted as a list of `rng`, but when using torch seed, `rng` is reused as the len of list, CHANGE IT FOR CONSISTENCY LATER'''
         if not isinstance(rng, int):
             U_4=torch.from_numpy(np.array([U(4,rng).astype(self.dtype['numpy']).reshape((2,)*4) for rng in rng]))
             if self.gpu:
@@ -904,6 +910,10 @@ class CT_tensor:
 
             new_idx[mask_1+mask_2]=new_idx[mask_1+mask_2]^(0b10)
 
+            if self.ancilla:
+                new_idx=torch.hstack((new_idx<<1,(new_idx<<1)+1))
+                old_idx=torch.hstack((old_idx<<1,(old_idx<<1)+1))
+
             not_new_idx=torch.ones(2**(self.L_T),dtype=bool,device=self.device)
             not_new_idx[new_idx]=False
             
@@ -912,45 +922,15 @@ class CT_tensor:
         if self.xj==set([0]):
             return torch.tensor([]), torch.tensor([]),torch.tensor([])
 
-    def adder_cpu(self):
-        ''' This is not a full adder, which assume the leading digit in the input bitstring is zero (because of the T^{-1}R_L, the leading bit should always be zero).'''
-        if self.xj==set([Fraction(1,3),Fraction(2,3)]):
-            int_1_6=(int(Fraction(1,6)*2**self.L)|1)
-            int_1_3=(int(Fraction(1,3)*2**self.L))
-                
-            
-            old_idx=np.arange(2**(self.L-1)).reshape((2,-1))
-            adder_idx=np.array([[int_1_6],[int_1_3]])
-            new_idx=(old_idx+adder_idx)
-            # handle the extra attractors, if 1..0x1, then 1..0(1-x)1, if 0..1x0, then 0..1(1-x)0 [shouldn't enter this branch..]
-            mask_1=(new_idx&(1<<self.L-1) == (1<<self.L-1)) & (new_idx&(1<<2) == (0)) & (new_idx&(1) == (1))
-            mask_2=(new_idx&(1<<self.L-1) == (0)) & (new_idx&(1<<2) == (1<<2)) & (new_idx&(1) == (0))
-
-            new_idx[mask_1+mask_2]=new_idx[mask_1+mask_2]^(0b10)
-
-            not_new_idx=np.ones(2**(self.L_T),dtype=bool,)
-            not_new_idx[new_idx]=False
-
-
-            return new_idx, old_idx, not_new_idx
-        if self.xj==set([0]):
-            return np.array([]), np.array([]), np.array([])
-
-
     def adder_tensor_(self,vec):
         new_idx=self.new_idx.flatten()
         old_idx=self.old_idx.flatten()
         not_new_idx=self.not_new_idx.flatten()
         if (new_idx).shape[0]>0 and (old_idx).shape[0]>0:
-            
             vec_flatten=vec.view((-1,vec.shape[-1]))    
-            if self.ancilla:
-                new_idx=torch.hstack((new_idx<<1,(new_idx<<1)+1))
-                old_idx=torch.hstack((old_idx<<1,(old_idx<<1)+1))
-
             vec_flatten[new_idx,:]=vec_flatten[old_idx,:]
-            
             vec_flatten[not_new_idx,:]=0
+            pass
 
     def generate_binary(self,idx_list,p):
         '''Generate boolean list, given probability `p` and seed `self.rng[idx]`

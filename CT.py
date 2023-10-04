@@ -96,13 +96,15 @@ class CT_quantum:
             vec=np.zeros((2**self.L,),dtype=complex)
             vec[vec_int]=1
         else:
-            # Simply create a GHZ state, (|0...0> + |1...1> )/sqrt(2)
-            vec=np.zeros((2**(self.L+1),),dtype=complex)
-            vec[0]=1/np.sqrt(2)
-            vec[-1]=1/np.sqrt(2)
-            # Randomize it 
-            for _ in range(self.L**2):
-                vec=self.Bernoulli_map(vec)
+            ## Simply create a GHZ state, (|0...0> + |1...1> )/sqrt(2)
+            # vec=np.zeros((2**(self.L+1),),dtype=complex)
+            # vec[0]=1/np.sqrt(2)
+            # vec[-1]=1/np.sqrt(2)
+            # # Randomize it 
+            # for _ in range(self.L**2):
+            #     vec=self.Bernoulli_map(vec)
+
+            vec=Haar_state(self.L, 1,rng=self.rng).flatten()/np.sqrt(2)
         return vec
 
     def Bernoulli_map(self,vec):
@@ -540,7 +542,17 @@ def S(L,rng):
 
     return sp.kron(I2,U_4)
 
-
+def Haar_state(L,ensemble,rng=None):
+    if rng is None:
+        rng=np.random.default_rng(None)
+    state=rng.normal(size=(2**L,2,2,ensemble)) # wf, re/im, 0/1,ensemble
+    z=state[:,0,:,:]+1j*state[:,1,:,:] # wf, 0/1, ensemble
+    norm=np.sqrt((np.abs(z[:,0,:])**2).sum(axis=0)) # ensemble
+    z[:,0,:]=z[:,0,:]/norm
+    z[:,1,:]=z[:,1,:]-(z[:,0,:].conj()*z[:,1,:]).sum(axis=0)*z[:,0,:]
+    norm=np.sqrt((np.abs(z[:,1,:])**2).sum(axis=0))
+    z[:,1,:]=z[:,1,:]/norm
+    return z
 
 @lru_cache(maxsize=None)
 def bin_pad(x,L):
@@ -616,17 +628,24 @@ class CT_tensor:
 
         else:
             # Simply create a GHZ state, (|0...0> + |1...1> )/sqrt(2)
-            vec=torch.zeros((2,)*(self.L_T)+(len(self.x0),),dtype=self.dtype['torch'],device=self.device)
-            vec[(0,)*self.L_T]=1/np.sqrt(2)
-            vec[(1,)*self.L_T]=1/np.sqrt(2)
+            # vec=torch.zeros((2,)*(self.L_T)+(len(self.x0),),dtype=self.dtype['torch'],device=self.device)
+            # vec[(0,)*self.L_T]=1/np.sqrt(2)
+            # vec[(1,)*self.L_T]=1/np.sqrt(2)
 
-            # Randomize it 
+            # # Randomize it 
+            # if self.ensemble is None:
+            #     for _ in range(self.L**2):
+            #         vec=self.Bernoulli_map(vec,self.rng)
+            # else:
+            #     for _ in range(self.L**2):
+            #         vec=self.Bernoulli_map(vec,len(self.x0))
+
             if self.ensemble is None:
-                for _ in range(self.L**2):
-                    vec=self.Bernoulli_map(vec,self.rng)
+                vec=torch.from_numpy(np.array([Haar_state(self.L,ensemble=1,rng=rng).astype(self.dtype['numpy']).reshape((2,)*(self.L+1)) for rng in self.rng])).permute(list(range(1,self.L_T+1))+[0])/np.sqrt(2)
+                if self.gpu:
+                    vec=vec.cuda()
             else:
-                for _ in range(self.L**2):
-                    vec=self.Bernoulli_map(vec,len(self.x0))
+                vec=self.Haar_state()/torch.sqrt(torch.tensor(2,device=self.device))
         return vec
     
     def _initialize_op(self):
@@ -984,3 +1003,17 @@ class CT_tensor:
         Lambda=torch.diag_embed(r_diag/torch.abs(r_diag))
         Q=torch.einsum(Q,[0,1,2],Lambda,[0,2,3],[0,1,3])
         return Q
+
+    def Haar_state(self):
+        # Generate two orthorgonal Haar random state
+        dtype=torch.float64 if self.dtype['torch']==torch.complex128 else torch.float32
+        state=torch.randn((2,)*(self.L+2)+(self.ensemble,),device=self.device,dtype=dtype) # wf, re/im, 0/1,ensemble
+        state=state[:,0,:,:]+1j*state[:,1,:,:] # wf, 0/1, ensemble
+        vec0,vec1=state[...,0,:],state[...,1,:] # wf,ensemble
+        norm=(torch.einsum(vec0.conj(),[...,0],vec0,[...,0],[0])) # ensemble
+        vec0/=torch.sqrt(norm)
+        overlap=torch.einsum(vec0.conj(),[...,0],vec1,[...,0],[0]) #ensemble
+        vec1-=overlap*vec0
+        norm=(torch.einsum(vec1.conj(),[...,0],vec1,[...,0],[0])) 
+        vec1/=torch.sqrt(norm)
+        return state

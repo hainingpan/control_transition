@@ -1008,7 +1008,7 @@ class CT_tensor:
         # Generate two orthorgonal Haar random state
         dtype=torch.float64 if self.dtype['torch']==torch.complex128 else torch.float32
         state=torch.randn((2,)*(self.L+2)+(self.ensemble,),device=self.device,dtype=dtype) # wf, re/im, 0/1,ensemble
-        state=state[:,0,:,:]+1j*state[:,1,:,:] # wf, 0/1, ensemble
+        state=torch.complex(state[:,0,:,:],state[:,1,:,:]) # wf, 0/1, ensemble
         vec0,vec1=state[...,0,:],state[...,1,:] # wf,ensemble
         norm=(torch.einsum(vec0.conj(),[...,0],vec0,[...,0],[0])) # ensemble
         vec0/=torch.sqrt(norm)

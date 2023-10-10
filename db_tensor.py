@@ -30,12 +30,13 @@ def run_tensor(gpu,complex128):
     evo_timestamp=time.time()
     _=ct.order_parameter()
     OP_timestamp=time.time()
-    _=ct.half_system_entanglement_entropy()
+    # _=ct.half_system_entanglement_entropy()
+    _=ct.von_Neumann_entropy_pure([ct.L],)
     EE_timestamp=time.time()
     _=ct.tripartite_mutual_information(np.arange(ct.L//4),np.arange(ct.L//4)+ct.L//4,np.arange(ct.L//4)+ct.L//4*2)
     TMI_timestamp=time.time()
     peak_memory_MB = torch.cuda.max_memory_allocated()/ (1024 ** 2)
-    return init_timestamp-st0,evo_timestamp-st0,OP_timestamp-evo_timestamp,EE_timestamp-OP_timestamp,TMI_timestamp-EE_timestamp,peak_memory_MB, ct.vec.numel()*ct.vec.element_size()/1024**2
+    return init_timestamp-st0,evo_timestamp-init_timestamp,OP_timestamp-evo_timestamp,EE_timestamp-OP_timestamp,TMI_timestamp-EE_timestamp,peak_memory_MB, ct.vec.numel()*ct.vec.element_size()/1024**2
  
 for gpu in [torch.cuda.is_available(),]:
     for complex128 in [False,]:

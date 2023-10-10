@@ -6,6 +6,7 @@ from fractions import Fraction
 from functools import partial, lru_cache
 import torch
 
+# needs optimizations
 class CT_classical:
     def __init__(self,L,history=False,seed=None,x0=None):
         '''
@@ -74,27 +75,35 @@ class CT_classical:
         return -vec_Z@vec_Z_shift/self.L
 
 class CT_quantum:
-    def __init__(self,L,history=False,seed=None,x0=None,xj=set([Fraction(1,3),Fraction(2,3)]),_eps=1e-10, ancilla=False):
+    def __init__(self,L,store_vec=False,store_op=False,store_prob=False,seed=None,seed_vec=None,seed_C=None,x0=None,xj=set([Fraction(1,3),Fraction(2,3)]),_eps=1e-10, ancilla=False,normalization=True):
         '''save using an array of 2^L'''
         self.L=L # physical L, excluding ancilla
         self.L_T=L+1 if ancilla else L # tensor L, ancilla
-        self.history=history
-        self.rng=np.random.default_rng(seed)
+        self.store_vec=store_vec
+        self.store_op=store_op
+        self.store_prob=store_prob
+        self.rng=np.random.default_rng(seed) # random in outcome, and initial state + circuit (if unspecified, for backwards compatibility)
+        self.rng_vec=np.random.default_rng(seed_vec) if seed_vec is not None else self.rng
+        self.rng_C=np.random.default_rng(seed_C) if seed_C is not None else self.rng
         self.x0=self.rng.random() if x0 is None else x0
-        self.op_history=[]  # control: true, Bernoulli: false
+        self.op_history=[]
+        self.prob_history=[]  # probability of entering zero
         self.ancilla=ancilla
         self.vec=self._initialize_vector()
         self.vec_history=[self.vec]
         self._eps=_eps
         self.xj=set(xj)
-    
+        self.op_list=self._initialize_op()
+        self.normalization=normalization    
+        
     def _initialize_vector(self):
         '''save using an array of 2^L
         if ancilla qubit: it should be put to the last qubit, positioned as L, entangled with L-1'''
         if not self.ancilla:
-            vec_int=int(''.join(map(str,dec2bin(self.x0,self.L))),2)
-            vec=np.zeros((2**self.L,),dtype=complex)
-            vec[vec_int]=1
+            # vec_int=int(''.join(map(str,dec2bin(self.x0,self.L))),2)
+            # vec=np.zeros((2**self.L,),dtype=complex)
+            # vec[vec_int]=1
+            vec=Haar_state(self.L, 1,rng=self.rng_vec).flatten()
         else:
             ## Simply create a GHZ state, (|0...0> + |1...1> )/sqrt(2)
             # vec=np.zeros((2**(self.L+1),),dtype=complex)
@@ -104,27 +113,34 @@ class CT_quantum:
             # for _ in range(self.L**2):
             #     vec=self.Bernoulli_map(vec)
 
-            vec=Haar_state(self.L, 1,rng=self.rng).flatten()/np.sqrt(2)
+            vec=Haar_entangled_state(self.L, 1,rng=self.rng_vec).flatten()/np.sqrt(2)
         return vec
+    
+    def _initialize_op(self):
+        return {("C",0):partial(self.control_map,bL=0),
+                ("C",1):partial(self.control_map,bL=1),
+                (f"P{self.L-1}",0):partial(self.projection_map,pos=self.L-1,n=0),
+                (f"P{self.L-1}",1):partial(self.projection_map,pos=self.L-1,n=1),
+                (f"P{self.L-2}",0):partial(self.projection_map,pos=self.L-2,n=0),
+                (f"P{self.L-2}",1):partial(self.projection_map,pos=self.L-2,n=1),
+                ("B",):self.Bernoulli_map,
+                ("I",):lambda x:x
+                }
 
     def Bernoulli_map(self,vec):
-        # vec=T(self.L,left=True)@vec
         vec=self.T_tensor(vec,left=True)
-        # vec=S(self.L,rng=self.rng)@vec
-        vec=self.S_tensor(vec,rng=self.rng)
+        vec=self.S_tensor(vec,rng=self.rng_C)
         return vec
     
     def control_map(self,vec,bL):
         '''control map depends on the outcome of the measurement of bL'''
         # projection on the last bits
-        # P_cached=P(self.L,bL)
-        # vec=P_cached@vec
         vec=self.P_tensor(vec,bL)
         if bL==1:
             vec=self.XL_tensor(vec)
-        vec=self.normalize(vec)
+        if self.normalization:
+            vec=self.normalize(vec)
         # right shift 
-        # vec=T(self.L,left=False)@vec
         vec=self.T_tensor(vec,left=False)
 
         assert np.abs(vec[vec.shape[0]//2:]).sum() == 0, f'first qubit is not zero ({np.abs(vec[vec.shape[0]//2:]).sum()}) after right shift '
@@ -140,61 +156,11 @@ class CT_quantum:
     def projection_map(self,vec,pos,n):
         '''projection to `pos` with outcome of `n`
         note that here is 0-index, and pos=L-1 is the last bit'''
-        # vec=P(self.L,n=n,pos=pos)@vec
         vec=self.P_tensor(vec,n,pos)
-        vec=self.normalize(vec)
-
-        # proj to any axis
-        # U_2=U(2,self.rng)
-        # # if not self.ancilla:
-        # vec_tensor=vec.reshape((2,)*self.L_T)
-        # idx_list=np.arange(self.L_T)
-        # idx_list[pos],idx_list[0]=idx_list[0],idx_list[pos]
-        # vec_tensor=vec_tensor.transpose(idx_list).reshape((2,2**(self.L_T-1)))
-        # vec=(U_2@vec_tensor).reshape((2,)*self.L_T).transpose(idx_list).flatten()
-
+        if self.normalization:
+            vec=self.normalize(vec)
         return vec
 
-    def random_control(self,p_ctrl,p_proj):
-        '''
-        p_ctrl: the control probability
-        p_proj: the projection probability
-        This is not the desired protocol, too strong measurement.
-        '''
-        vec=self.vec_history[-1].copy()
-
-        p={}
-        p[("L",0)]= vec.conj()@P(self.L,n=0,pos=self.L-1)@vec
-        p[("L",1)] = vec.conj()@P(self.L,n=1,pos=self.L-1)@vec
-        p[("L-1",0)] = vec.conj()@P(self.L,n=0,pos=self.L-2)@vec
-        p[("L-1",1)] = vec.conj()@P(self.L,n=1,pos=self.L-2)@vec
-        
-        for key, val in p.items():
-            assert np.abs(val.imag)<self._eps, f'probability for {key} is not real {val}'
-            p[key]=val.real
-
-        pool = ["C0","C1","PL0","PL1","PL-10","PL-11","chaotic"]
-        probabilities = [p_ctrl * p[("L",0)], p_ctrl * p[("L",1)], p_proj * p[("L",0)], p_proj *  p[("L",1)], p_proj * p[("L-1",0)], p_proj * p[("L-1",1)], 1- p_ctrl-2*p_proj]
-
-        op = self.rng.choice(pool,p=probabilities)
-
-        op_list= {"C0":partial(self.control_map,bL=0),
-                  "C1":partial(self.control_map,bL=1),
-                  "PL0":partial(self.projection_map,pos=self.L-1,n=0),
-                  "PL1":partial(self.projection_map,pos=self.L-1,n=1),
-                  "PL-10":partial(self.projection_map,pos=self.L-2,n=0),
-                  "PL-11":partial(self.projection_map,pos=self.L-2,n=1),
-                  "chaotic":self.Bernoulli_map
-                  }
-
-        vec=op_list[op](vec)
-        
-        if self.history:
-            self.vec_history.append(vec)
-            self.op_history.append(op)
-        else:
-            self.vec_history=[vec]
-            self.op_history=[op]
 
     def random_control_2(self,p_ctrl,p_proj):
         '''the competition between chaotic and random, where the projection can only be applied after the unitary
@@ -229,52 +195,57 @@ class CT_quantum:
                 vec=op_list[op_2](vec)
                 self.update_history(vec,op_2)
 
-    def random_control_3(self,p_ctrl,p_proj):
+    def random_control(self,p_ctrl,p_proj):
         '''This is the same protocol as `random_control_2`, the only difference is the way to generate rng, and document op'''
         vec=self.vec_history[-1].copy()
-        op_list= {"C0":partial(self.control_map,bL=0),
-                  "C1":partial(self.control_map,bL=1),
-                  f"P{self.L-1}0":partial(self.projection_map,pos=self.L-1,n=0),
-                  f"P{self.L-1}1":partial(self.projection_map,pos=self.L-1,n=1),
-                  f"P{self.L-2}0":partial(self.projection_map,pos=self.L-2,n=0),
-                  f"P{self.L-2}1":partial(self.projection_map,pos=self.L-2,n=1),
-                  "chaotic":self.Bernoulli_map,
-                  "I":lambda x:x
-                  }
 
-        if self.rng.random()<=p_ctrl:
+        op_l=[]
+        if self.rng_C.random()<=p_ctrl:
             # control 
             p_0=self.inner_prob(vec, pos=self.L-1,)
-            op='C0' if self.rng.random()<=p_0 else 'C1'
+            op=('C',0) if self.rng.random()<=p_0 else ('C',1)
         else:
             # chaotic
-            op='chaotic'
+            op=('B',)
+        op_l.append(op)
         
-        vec=op_list[op](vec)
+        vec=self.op_list[op](vec)
 
-        if op=="chaotic":
-            for pos in [self.L-1,self.L-2]:
-                if self.rng.random()<p_proj:
+        if "B" in op:
+            for idx,pos in enumerate([self.L-1,self.L-2]):
+                if self.rng_C.random()<p_proj:
                     # projection
-                    p_2=self.inner_prob(vec, pos=pos,)
-                    op_2=f"P{pos}0" if self.rng.random()<p_2 else f"P{pos}1"
-                    vec=op_list[op_2](vec)
-                    op=op+'_'+op_2
-        self.update_history(vec,op)
-
-
-
+                    p_2=(self.inner_prob(vec, pos=pos,))
+                    op_2=(f"P{pos}",0) if self.rng.random()<p_2 else (f"P{pos}",1)
+                    vec=self.op_list[op_2](vec)
+                    op_l.append(op_2)
+        self.update_history(vec,op_l,None)
+    
+    def reference_control(self,op_history):
+        # Perform a series of operation based on `op_history`
+        vec=self.vec_history[-1].copy()
+        for op_l in op_history:
+            self.rng_C.random() # dummy random to keep same random sequence, same as p_ctrl
+            
+            for idx,op in enumerate(op_l):
+                vec=self.op_list[op](vec)
+                if 'C' in op:
+                    self.rng.random() # dummy random for C0/C1
+                if 'B' in op:
+                    self.rng_C.random() # dummy in projection at L-1, L-2
+                    self.rng_C.random() # dummy in projection at L-1, L-2
+                if 'P' in op:
+                    self.rng.random() # dummy in random pro Pi0/Pi1
+                
+            self.update_history(vec,op_l,None)
     
     def order_parameter(self,vec=None):
         if vec is None:
             vec=self.vec_history[-1].copy()
-        # O=(vec.conj().T@ZZ(self.L)@vec).toarray()[0,0]
-        # O=(vec.conj().T@ZZ(self.L)@vec)
         if self.xj== set([Fraction(1,3),Fraction(2,3)]):
             O=self.ZZ_tensor(vec)
         elif self.xj == set([0]):
             O=self.Z_tensor(vec)
-
 
         assert np.abs(O.imag)<self._eps, f'<O> is not real ({val}) '
         return O.real
@@ -319,21 +290,29 @@ class CT_quantum:
             S_ABC=self.von_Neumann_entropy_pure(np.concatenate([subregion_A,subregion_B,subregion_C]),vec=vec)
             return S_A+ S_B + S_C-S_AB-S_AC-S_BC+S_ABC
 
-    def update_history(self,vec=None,op=None):
-        if self.history:
+    def update_history(self,vec=None,op=None,p=None):
+        if self.store_vec:
             if vec is not None:
-                self.vec_history.append(vec)
-            if op is not None:
-                self.op_history.append(op)
+                self.vec_history.append(vec.copy())
         else:
             if vec is not None:
                 self.vec_history=[vec]
+
+        if self.store_op:
+            if op is not None:
+                self.op_history.append(op)
+        else:
             if op is not None:
                 self.op_history=[op]
+        if self.store_prob:
+            if p is not None:
+                self.prob_history.append(p)
+        else:
+            if p is not None:
+                self.prob_history=[p]
 
     def get_prob(self,L_list,vec):
         '''get the probability of measuring 0 at site L_list'''
-        # prob={(pos,n):(vec.conj().T@P(self.L,n=n,pos=pos)@vec).toarray()[0,0] for pos in L_list for n in [0,1]}
         prob={(pos,n):(vec.conj().T@P(self.L,n=n,pos=pos)@vec) for pos in L_list for n in [0,1]}
         for key, val in prob.items():
             assert np.abs(val.imag)<self._eps, f'probability for {key} is not real {val}'
@@ -367,10 +346,12 @@ class CT_quantum:
 
     def normalize(self,vec):
         # normalization after projection
-        # norm=np.sqrt(vec.conj().T@vec).toarray()[0,0]
-        norm=np.sqrt(vec.conj().T@vec)
-        assert norm != 0 , f'Cannot normalize: norm is zero {norm}'
-        return vec/norm
+        norm2=(vec.conj().T@vec).real
+        self.update_history(None,None,norm2)
+        if norm2 > 0:
+            return vec/np.sqrt(norm2)
+        else:
+            return vec
         
     def XL_tensor(self,vec):
         '''directly swap 0 and 1'''
@@ -400,7 +381,6 @@ class CT_quantum:
         '''directly transpose the index of tensor'''
         vec_tensor=vec.reshape((2,)*self.L_T)
         idx_list=np.arange(self.L_T)
-        # shift=-1 if left else 1
         if left:
             idx_list_2=list(range(1,self.L))+[0]
         else:
@@ -412,6 +392,7 @@ class CT_quantum:
     def S_tensor(self,vec,rng):
         '''directly convert to tensor and apply to the last two indices'''
         U_4=U(4,rng)
+        # print(np.round(U_4,3))
         if not self.ancilla:
             vec_tensor=vec.reshape((2**(self.L-2),2**2)).T  
             return (U_4@vec_tensor).T.flatten()
@@ -545,6 +526,17 @@ def S(L,rng):
 def Haar_state(L,ensemble,rng=None):
     if rng is None:
         rng=np.random.default_rng(None)
+    state=rng.normal(size=(2**L,2,ensemble)) # wf, re/im,ensemble
+    z=state[:,0,:]+1j*state[:,1,:] # wf, ensemble
+    norm=np.sqrt((np.abs(z)**2).sum(axis=0)) # ensemble
+    z/=norm
+    return z
+
+def Haar_entangled_state(L,ensemble,rng=None):
+    # Haar random state with maximal entanglement
+    # (|s_1>|0>+|s_2>|1>)/sqrt(2)
+    if rng is None:
+        rng=np.random.default_rng(None)
     state=rng.normal(size=(2**L,2,2,ensemble)) # wf, re/im, 0/1,ensemble
     z=state[:,0,:,:]+1j*state[:,1,:,:] # wf, 0/1, ensemble
     norm=np.sqrt((np.abs(z[:,0,:])**2).sum(axis=0)) # ensemble
@@ -558,9 +550,6 @@ def Haar_state(L,ensemble,rng=None):
 def bin_pad(x,L):
     '''convert a int to binary form with 0 padding to the left'''
     return (bin(x)[2:]).rjust(L,'0')
-
-
-
 class CT_tensor:
     def __init__(self,L,history=False,seed=None,x0=None,xj=set([Fraction(1,3),Fraction(2,3)]),_eps=1e-10, ancilla=False,gpu=False,complex128=True,ensemble=None):
         '''the tensor is saved as (0,1,...L-1, ancilla, ensemble)
@@ -720,6 +709,13 @@ class CT_tensor:
                         if len(idx)>0:
                             vec[...,idx]=self.op_list[f'P{pos}{0*key+1*(1-key)}'](vec[...,idx])
         self.update_history(vec,ctrl_idx_dict,ctrl_0_idx_dict,proj_idx_dict,proj_0_idx_dict)
+
+    def random_control_uniform(self,p_ctrl,p_proj,vec=None):
+        # Instead of each sample randomly choice the quantum trajectories, here all samples follow the same circuit, which is used in cross entropy benchmark
+        if vec is None:
+            vec=self.vec
+        p=torch.random() # p[0] is 
+    
 
     def order_parameter(self,vec=None):
         if vec is None:

@@ -262,6 +262,13 @@ class CT_quantum:
         if self.normalization:
             vec=self.normalize(vec)
         return vec
+    def encoding(self):
+        """Encoding process: Randomly apply Bernoulli map
+        """
+        vec=self.vec_history[-1].copy()
+        vec=self.op_list[('B',)](vec)
+        self.update_history(vec,('B',),None)
+
 
     def random_control(self,p_ctrl,p_proj):
         """The competition between chaotic random unitary, control map and projection, where the projection can only be applied after the unitary. The probability of control is `p_ctrl`, and the probability of projection is `p_proj`.
@@ -275,6 +282,7 @@ class CT_quantum:
             probability of projection
         """ 
         vec=self.vec_history[-1].copy()
+        
 
         op_l=[]
         if self.rng_C.random()<=p_ctrl:
@@ -708,8 +716,6 @@ def dec2bin(x,L):
         x-=int(x)
     return np.array(bits,dtype=int)
 
-kron_list=lambda x: reduce(sp.kron,x)
-
 def U(n,rng=None,size=1):
     """Calculate Haar random unitary matrix of dimension `n`. The method is based on QR decomposition of a random matrix with Gaussian entries.
 
@@ -781,7 +787,6 @@ def bin_pad(x,L):
     """
     return (bin(x)[2:]).rjust(L,'0')
 
-
 class CT_tensor:
     def __init__(self,L,history=False,seed=None,x0=None,xj=set([Fraction(1,3),Fraction(2,3)]),_eps=1e-10, ancilla=False,gpu=False,complex128=True,ensemble=None):
         '''the tensor is saved as (0,1,...L-1, ancilla, ensemble)
@@ -807,7 +812,6 @@ class CT_tensor:
         self.xj=set(xj)
         self.op_list=self._initialize_op()
         self.new_idx,self.old_idx, self.not_new_idx=self.adder_gpu()
-        self.tensor_true,self.tensor_false=torch.tensor(True,device=self.device), torch.tensor(False,device=self.device) # this is a workaround for generate_binary, because loop over tensor returns a tensor with a single value
 
     def _initialize_device(self):
         if self.gpu:
@@ -839,34 +843,22 @@ class CT_tensor:
         '''save using an array of 2^L
         if ancilla qubit: it should be put to the last qubit, positioned as L, entangled with L-1'''
         if not self.ancilla:
-            vec=torch.zeros((2,)*(self.L)+(len(self.x0),),dtype=self.dtype['torch'],device=self.device)
             if self.ensemble is None:
+                vec=torch.zeros((2,)*(self.L)+(len(self.x0),),dtype=self.dtype['torch'],device=self.device)
                 vec_int=np.array([np.hstack([dec2bin(x0,self.L),[idx]]) for idx,x0 in enumerate(self.x0)])
                 vec[tuple((vec_int).T)]=1
             else:
-                vec_v=vec.view((-1,self.ensemble))
-                vec_v[self.x0,torch.arange(self.ensemble,device=self.device)]=1
-
+                # vec=torch.zeros((2,)*(self.L)+(len(self.x0),),dtype=self.dtype['torch'],device=self.device)
+                # vec_v=vec.view((-1,self.ensemble))
+                # vec_v[self.x0]=1
+                vec=self.Haar_state(k=1)[...,0,:]
         else:
-            # Simply create a GHZ state, (|0...0> + |1...1> )/sqrt(2)
-            # vec=torch.zeros((2,)*(self.L_T)+(len(self.x0),),dtype=self.dtype['torch'],device=self.device)
-            # vec[(0,)*self.L_T]=1/np.sqrt(2)
-            # vec[(1,)*self.L_T]=1/np.sqrt(2)
-
-            # # Randomize it 
-            # if self.ensemble is None:
-            #     for _ in range(self.L**2):
-            #         vec=self.Bernoulli_map(vec,self.rng)
-            # else:
-            #     for _ in range(self.L**2):
-            #         vec=self.Bernoulli_map(vec,len(self.x0))
-
             if self.ensemble is None:
                 vec=torch.from_numpy(np.array([Haar_state(self.L,ensemble=1,rng=rng).astype(self.dtype['numpy']).reshape((2,)*(self.L+1)) for rng in self.rng])).permute(list(range(1,self.L_T+1))+[0])/np.sqrt(2)
                 if self.gpu:
                     vec=vec.cuda()
             else:
-                vec=self.Haar_state()/torch.sqrt(torch.tensor(2,device=self.device))
+                vec=self.Haar_state(k=2)/torch.sqrt(torch.tensor(2,device=self.device))
         return vec
     
     def _initialize_op(self):
@@ -909,6 +901,16 @@ class CT_tensor:
         self.P_tensor_(vec,n,pos)
         self.normalize_(vec)
         return vec
+
+    def encoding(self,vec=None):
+        if vec is None:
+            vec=self.vec
+        
+        vec=self.op_list['chaotic'](vec,self.ensemble)
+        self.update_history(vec)
+
+        
+
 
     def random_control(self,p_ctrl,p_proj,vec=None):
         '''the competition between chaotic and random, where the projection can only be applied after the unitary
@@ -1232,16 +1234,16 @@ class CT_tensor:
         Q=torch.einsum(Q,[0,1,2],Lambda,[0,2,3],[0,1,3])
         return Q
 
-    def Haar_state(self):
-        # Generate two orthorgonal Haar random state
+    def Haar_state(self,k):
+        # Generate k orthorgonal Haar random state
         dtype=torch.float64 if self.dtype['torch']==torch.complex128 else torch.float32
-        state=torch.randn((2,)*(self.L+2)+(self.ensemble,),device=self.device,dtype=dtype) # wf, re/im, 0/1,ensemble
-        state=torch.complex(state[:,0,:,:],state[:,1,:,:]) # wf, 0/1, ensemble
-        vec0,vec1=state[...,0,:],state[...,1,:] # wf,ensemble
-        norm=(torch.einsum(vec0.conj(),[...,0],vec0,[...,0],[0])) # ensemble
-        vec0/=torch.sqrt(norm)
-        overlap=torch.einsum(vec0.conj(),[...,0],vec1,[...,0],[0]) #ensemble
-        vec1-=overlap*vec0
-        norm=(torch.einsum(vec1.conj(),[...,0],vec1,[...,0],[0])) 
-        vec1/=torch.sqrt(norm)
+        state=torch.randn((2,)*(self.L+1)+(k,)+(self.ensemble,),device=self.device,dtype=dtype) # wf, re/im, k,ensemble
+        state=torch.complex(state[:,0,:,:],state[:,1,:,:]) # wf, k, ensemble
+        norm=(torch.einsum(state[...,0,:].conj(),[...,0],state[...,0,:],[...,0],[0])) # ensemble
+        state[...,0,:]/=torch.sqrt(norm)
+        if k==2:
+            overlap=torch.einsum(state[...,0,:].conj(),[...,0],state[...,1,:],[...,0],[0]) #ensemble
+            state[...,1,:]-=overlap*vec0
+            norm=(torch.einsum(state[...,1,:].conj(),[...,0],state[...,1,:],[...,0],[0])) 
+            state[...,1,:]/=torch.sqrt(norm)
         return state

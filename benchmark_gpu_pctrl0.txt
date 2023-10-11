@@ -1,0 +1,24 @@
+L=26, es=3
+Using cuda
+T=53.2229s
+L=24, es=14
+Using cuda
+T=66.1200s
+L=22, es=56
+Using cuda
+T=68.3929s
+L=20, es=225
+Using cuda
+T=62.0299s
+L=18, es=900
+Using cuda
+T=62.2996s
+L=16, es=3600
+Using cuda
+T=67.7027s
+L=14, es=14400
+Using cuda
+T=110.0318s
+L=12, es=57600
+Using cuda
+T=288.5846s

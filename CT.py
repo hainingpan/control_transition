@@ -130,7 +130,6 @@ class CT_quantum:
         debug : bool, optional
             if trure, all assertions will be checked, by default False
         """        
-        '''save using an array of 2^L'''
         self.L=L 
         self.L_T=L+1 if ancilla else L # the length combining the physical system and the ancilla qubit
         self.store_vec=store_vec
@@ -658,7 +657,7 @@ class CT_quantum:
         Returns
         -------
         float
-            order parameter for Ferromagnetic state
+            order parameter for ferromagnetic state
         """
         if vec_tensor.ndim != (2,)*self.L_T:
             vec_tensor=vec.reshape((2,)*self.L_T)
@@ -790,13 +789,44 @@ def bin_pad(x,L):
     return (bin(x)[2:]).rjust(L,'0')
 
 class CT_tensor:
-    def __init__(self,L,store_vec=False,store_op=False,store_prob=False,seed=None,seed_vec=None,seed_C=None,x0=None,xj=set([Fraction(1,3),Fraction(2,3)]),_eps=1e-10, ancilla=False,gpu=False,complex128=True,ensemble=None,ensemble_m=1,debug=False):
-        '''the tensor is saved as (0,1,...L-1, ancilla, ensemble)
-        complex128: True:complex128 or False: complex64, default `complex128`
-        First mode: if `seed` is a list, this corresponds to the single state vector simulation defined in `CT_quantum`. Numpy rng generator are used, the ensemble size is the same as `len(seed)`, `ensemble` should be None.
-        Second mode: when `seed_vec` and `seed_C` are not `None` and `seed` is a number. `seed` will apply to initial state vec, and circuit. In this case, ensemble size is simply the total number of random samples with different circuit, and `ensemble_m` is 1 (by default). (For backwards compability) `
-        Third mode: when `seed_vec` and `seed_C` and `seed` are all not None. `ensemble` and `ensemble_m` controls the number of different circuit and number of outcome in each circuit.
-        '''
+    def __init__(self,L,store_vec=False,store_op=False,store_prob=False,seed=None,seed_vec=None,seed_C=None,xj=set([Fraction(1,3),Fraction(2,3)]),_eps=1e-10, ancilla=False,gpu=False,complex128=True,ensemble=None,ensemble_m=1,debug=False):
+        """Initialize the quantum circuit for control transition and measurement induced transition using PyTorch. The tensor is saved as (0,1,...L-1, ancilla, ensemble, ensemble_m), where `ensemble` is for the ensemble size of the circuit (position of projection and control) and `ensemble_m` is for the ensemble size of outcome within a same circuit. 
+        Numpy rng mode: If `seed` is a list, this corresponds to the single state vector simulation defined in `CT_quantum`. Numpy rng generator are used, the ensemble size is the same as `len(seed)`, `ensemble` should be None.
+        PyTorch rng mode: when `seed_vec` and `seed_C` are not `None`, and `seed` is a number. `seed` will apply to initial state vec, and circuit. In this case, ensemble size is simply the total number of random samples with different circuit, and `ensemble_m` is 1 (by default). When `seed_vec` and `seed_C` and `seed` are all not None. `ensemble` and `ensemble_m` controls the number of different circuit and number of outcome in each circuit.
+
+        Parameters
+        ----------
+        L : int
+            the length of the physical system, excluding ancilla qubit
+        store_vec : bool, optional
+            store the history of state vector , by default False
+        store_op : bool, optional
+            store the history of operators applied to the circuit, by default False
+        store_prob : bool, optional
+            store the history of each probability at projective measurement, by default False
+        seed : list of numpy.rng or int, optional
+            (1) the random seed in the measurement outcome; (2) if `seed_vec` and `seed_C` is None, this random seed also applied to initial state vector and circuit, by default None
+        seed_vec : list of numpy.rng or int, optional
+            the random seed in the state vector, by default None, by default None
+        seed_C : list of numpy.rng or int, optional
+            the random seed in the circuit, by default None, by default None
+        xj : set of Fractions, optional
+            the set of attractors using Fractions, by default set([Fraction(1,3),Fraction(2,3)])
+        _eps : float, optional
+            error threshold, by default 1e-10
+        ancilla : bool, optional
+            if true, an ancilla qubit is maximally entangled to the system , by default False
+        gpu : bool, optional
+            if true, attempt to use GPU, by default False
+        complex128 : bool, optional
+            if true, save `vec` using complex128, otherwise, use `complex64`, by default True
+        ensemble : int, optional
+            number of different circuits. If None, len(numpy.rng) are used to determine the ensemble size, by default None
+        ensemble_m : int, optional
+            number of different outcome within a single circuit, by default 1
+        debug : bool, optional
+            if trure, all assertions will be checked, by default False, by default False
+        """
         self.L=L # physical L, excluding ancilla
         self.L_T=L+1 if ancilla else L # tensor L, ancilla
         self.store_vec=store_vec
@@ -806,12 +836,10 @@ class CT_tensor:
         self.device=self._initialize_device()
         self.ensemble=ensemble
         self.ensemble_m=ensemble_m
-        # self.mode=self._check_mode(seed, seed_vec, seed_C)
         self.rng=self._initialize_random_seed(seed)
         self.rng_vec=self._initialize_random_seed(seed_vec) if seed_vec is not None else self.rng
         self.rng_C=self._initialize_random_seed(seed_C) if seed_C is not None else self.rng
 
-        self.x0=x0
         self.op_history=[]  
         self.prob_history=[]  
         self.ancilla=ancilla
@@ -825,6 +853,18 @@ class CT_tensor:
         self.debug=debug
 
     def _initialize_device(self):
+        """Initialize the device, if `gpu` is True, use GPU, otherwise, use CPU.
+
+        Returns
+        -------
+        cuda instance
+            the name of GPU device
+
+        Raises
+        ------
+        ValueError
+            If GPU is not available, raise error.
+        """
         if self.gpu:
             if torch.cuda.is_available():
                 device = torch.device("cuda")
@@ -837,37 +877,55 @@ class CT_tensor:
 
     
     def _initialize_random_seed(self,seed):
+        """Initialize random seed
+
+        Parameters
+        ----------
+        seed : int or list of numpy.rng
+            If int, it's the random seed for all states. If list of numpy.rng, it uses numpy random generator for each state.
+
+        Returns
+        -------
+        rng : torch.Generator or list of numpy.random.Generator
+            If seed is int, return torch.Generator, otherwise, return list of numpy.random.Generator
+        """
         if self.ensemble is None:
             return np.array([np.random.default_rng(s) for s in seed])
         else:
-            # torch.manual_seed(seed)
             rng=torch.Generator(device=self.device)
             rng.manual_seed(seed)
             return rng
 
     def _initialize_vector(self):
-        '''save using (2,)*L+[(anc,)]+(C,M)
-        if ancilla qubit: it should be put to the last qubit, positioned as L, entangled with L-1'''
+        """Initalize the state vector.
+
+        Returns
+        -------
+        torch.tensor, shape=(2,)*L+[(anc,)]+(C,M)
+            [...] exists if `ancilla` is on. 
+        """
         k=1 if not self.ancilla else 2
+        factor=np.sqrt(1/k)
         if self.ensemble is None:
-            vec=torch.sqrt(torch.tensor(1/k,device=self.device,dtype=self.dtype['torch']))*torch.from_numpy(np.array([Haar_state(self.L,ensemble=1,rng=rng,k=k).astype(self.dtype['numpy']).reshape((2,)*(self.L_T)) for rng in self.rng_vec])).permute(list(range(1,self.L_T+1))+[0]).unsqueeze(-1)
+            vec=factor*torch.from_numpy(np.array([Haar_state(self.L,ensemble=1,rng=rng,k=k).astype(self.dtype['numpy']).reshape((2,)*(self.L_T)) for rng in self.rng_vec])).permute(list(range(1,self.L_T+1))+[0]).unsqueeze(-1)
             if self.gpu:
                 vec=vec.cuda()
         else:
             # Though verbose, but optimize for GPU RAM usage, squeeze() tends to reserve huge memory
-            # factor=torch.sqrt(torch.tensor(1/k,device=self.device,dtype=self.dtype['torch']))
-            factor=np.sqrt(1/k)
-            vec_single=factor*self.Haar_state(k=k,ensemble=self.ensemble,rng=self.rng_vec)
+            vec=factor*self.Haar_state(k=k,ensemble=self.ensemble,rng=self.rng_vec)
             if k == 1:
-                vec_single=vec_single[...,0,:]
-            
-            vec_single=vec_single.unsqueeze(-1)
-            vec_single=vec_single.repeat(*(1,)*self.L_T+(1,self.ensemble_m,))
-
-            vec=vec_single
+                vec=vec[...,0,:]
+            vec=vec.unsqueeze(-1).repeat(*(1,)*self.L_T+(1,self.ensemble_m,))
         return vec
     
     def _initialize_op(self):
+        """Initialize the operators inthe circuit. `C` is the control map, `P` is the projection, `B` is the Bernoulli map, `I` is the identity map. The second element in the tuple is the outcome. The number after "P" is the position of projection (0-index).
+
+        Returns
+        -------
+        dict of operatiors
+            possible operators in the circuit
+        """
         return {("C",0):partial(self.control_map,n=0),
                 ("C",1):partial(self.control_map,n=1),
                 (f"P{self.L-1}",0):partial(self.projection_map,pos=self.L-1,n=0),
@@ -877,15 +935,44 @@ class CT_tensor:
                 ("B",):self.Bernoulli_map,
                 ("I",):lambda x:x
                 }
+
     def Bernoulli_map(self,vec,rng=None,size=None):
-        # This always applied to the whole ensemble_m axis
+        """Apply Bernoulli map to the state vector `vec`. Note that this is always applied to the whole ensemble_m axis.
+
+        Parameters
+        ----------
+        vec : torch.tensor
+            state vector
+        rng : list of np.rng or torch.Generator, optional
+            Random generator to use, by default None, if None, use self.rng_C, this is used when `ensemble` is not None, namely using a single torch.Generator. Otherwise `rng` is a list of np.rng, and `ensebme` is ignored. The actual size is inferred from the length of `rng`
+        size : int, optional
+            If rng is scalar, `size` control the ensemble size, by default None
+
+        Returns
+        -------
+        torch.tensor
+            state vector after Bernoulli map
+        """
         vec=self.T_tensor(vec,left=True)
         rng=self.rng_C if rng is None else rng
         vec=self.S_tensor(vec,rng=rng,size=size)
         return vec
 
     def control_map(self,vec,n):
-        '''control map depends on the outcome of the measurement of n'''
+        """Apply control map to the state vector `vec`, usually input vector is in the shape where (ensemble, ensemble_m) are flatten.
+
+        Parameters
+        ----------
+        vec : torch.tensor
+            state vector
+        n : int, {0,1}
+            the outcome of the measurement of the last qubit, 0 or 1
+
+        Returns
+        -------
+        torch.tensor
+            state vector after control map
+        """
         # projection on the last bits
         self.P_tensor_(vec,n,self.L-1)
         if n==1:
@@ -902,19 +989,47 @@ class CT_tensor:
         return vec
     
     def projection_map(self,vec,pos,n):
+        """Projective measurement on the state vector `vec` at position `pos` with outcome `n`, usually input vector is in the shape where (ensemble, ensemble_m) are flatten.
+
+        Parameters
+        ----------
+        vec : torch.tensor
+            state vector
+        pos : int, {0,1,...,L-1}
+            position to apply the projection
+        n : int , {0,1}
+            the outcome of the measurement, 0 or 1
+
+        Returns
+        -------
+        torch.tensor
+            state vector after projection
+        """
         '''projection to `pos` with outcome of `n`
         note that here is 0-index, and pos=L-1 is the last bit'''
         self.P_tensor_(vec,n,pos)
         self.normalize_(vec)
         return vec
 
-    def encoding(self,vec=None):
-        if vec is None:
-            vec=self.vec
+    def encoding(self,):
+        """Encoding process: Randomly apply Bernoulli map and control map to the state vector `vec`. Note that this is always applied to the whole ensemble_m axis.
+        """
+        vec=self.vec
         vec=self.op_list[("B",)](vec,size=self.ensemble)
         self.update_history(vec)
-        return vec
+        
     def random_control(self,p_ctrl,p_proj,vec=None):
+        """Ramdonly apply `bernoulli_map`, `control_map` (with prob of `p_ctrl`) and `projection_map` (with prob of `p_proj`) to the state vector `vec`. 
+
+        Parameters
+        ----------
+        p_ctrl : float, 0<=p_ctrl<=1
+            probability of applying control map
+        p_proj : float, 0<=p_proj<=1
+            probability of applying projection map
+        vec : torch.tensor, optional
+            state vector to apply, by default None
+        """
         '''the competition between chaotic and random, where the projection can only be applied after the unitary
         Notation: L-1 is the last digits'''
         if vec is None:
@@ -956,7 +1071,15 @@ class CT_tensor:
         self.update_history(vec,(ctrl_idx_dict,ctrl_0_idx_dict,proj_idx_dict,proj_0_idx_dict),(p_0,p_2_dict))
 
     def reference_control(self,op,vec=None):
-        # Instead of each sample randomly choice the quantum trajectories, here all samples follow the same circuit, which is used in cross entropy benchmark
+        """Instead of randomly apply `bernoulli_map`, `control_map` and `projection_map`, apply the same operators following force quantum trajectory by applying `op`. This is used in cross entropy benchmark.
+
+        Parameters
+        ----------
+        op : tuple of dict
+            The operator to apply
+        vec : torch.tensor, optional
+            state vector, by default None
+        """
         if vec is None:
             vec=self.vec
         ctrl_idx_dict,ctrl_0_idx_dict,proj_idx_dict,proj_0_idx_dict=op
@@ -990,6 +1113,18 @@ class CT_tensor:
         self.update_history(vec,(ctrl_idx_dict,ctrl_0_idx_dict,proj_idx_dict,proj_0_idx_dict),(p_0,p_2_dict))
 
     def order_parameter(self,vec=None):
+        """Calculate the order parameter. For `xj={1/3,2/3}`, it is \sum Z.Z, for `xj={0}`, it is \sum Z.
+
+        Parameters
+        ----------
+        vec : torch.tensor, optional
+            state vector, by default None
+
+        Returns
+        -------
+        torch.tensor
+            order parameter
+        """
         if vec is None:
             vec=self.vec
         if self.xj== set([Fraction(1,3),Fraction(2,3)]):
@@ -999,8 +1134,22 @@ class CT_tensor:
         return O  
 
     def von_Neumann_entropy_pure(self,subregion,vec=None,driver='gesvd'):
-        '''`subregion` the spatial dof
-        this version uses Schmidt decomposition, which is easier for pure state'''
+        """Calculate the von Neumann entropy of a pure state, where the state vector is `vec` and the subregion is `subregion`. Using the Schmidt decomposition, the von Neumann entropy is -\sum_i \lambda_i^2 \log \lambda_i^2, where \lambda_i is the singular value of the reshaped state vector `vec`.
+
+        Parameters
+        ----------
+        subregion : list of int or torch.tensor
+            
+        vec : _type_, optional
+            The spatial subregion to calculate the von Neumann entropy, by default None
+        driver : str, optional
+            The driver of svd, by default 'gesvd'. Numerically found to be optimal here on GPU. If not on GPU, use default driver.
+
+        Returns
+        -------
+        torch.tensor
+            von Neumann entropy
+        """
         if vec is None:
             vec=self.vec
         if not self.gpu:
@@ -1015,6 +1164,20 @@ class CT_tensor:
         return torch.sum(-torch.log(S_pos**2)*S_pos**2,axis=-1)
 
     def half_system_entanglement_entropy(self,vec=None,selfaverage=False):
+        """Calculate the half-system entanglement entropy, where the state vector is `vec`. The half-system entanglement entropy is defined as \sum_{i=0..L/2-1}S_([i,i+L/2)) / (L/2), where S_([i,i+L/2)) is the von Neumann entropy of the subregion [i,i+L/2).
+
+        Parameters
+        ----------
+        vec : torch.tensor, optional
+            state vector, by default None
+        selfaverage : bool, optional
+            if true, average over all possible halves, namely, \sum_{i=0..L/2-1}S_([i,i+L/2)) / (L/2), by default False
+
+        Returns
+        -------
+        torch.tensor
+            Half-system entanglement entropy
+        """
         '''\sum_{i=0..L/2-1}S_([i,i+L/2)) / (L/2)'''
         if vec is None:
             vec=self.vec
@@ -1025,6 +1188,26 @@ class CT_tensor:
         return S_A
 
     def tripartite_mutual_information(self,subregion_A,subregion_B, subregion_C,selfaverage=False,vec=None):
+        """Calculate tripartite entanglement entropy. The tripartite entanglement entropy is defined as S_A+S_B+S_C-S_AB-S_AC-S_BC+S_ABC, where S_A is the von Neumann entropy of subregion A, S_AB is the von Neumann entropy of subregion A and B, etc. The system size `L` should be a divided by 4 such that the subregion A, B and C are of the same size.
+
+        Parameters
+        ----------
+        subregion_A : list of int or torch.tensor
+            subregion A
+        subregion_B : list of int or torch.tensor
+            subregion B
+        subregion_C : list of int or torch.tensor
+            subregion C
+        selfaverage : bool, optional
+            if true, average over all possible partitions, by default False, by default False
+        vec : torch.tensor, optional
+            state vector, by default None
+
+        Returns
+        -------
+        torch.tensor
+            Tripartite entanglement entropy
+        """
         if self.debug:
             assert np.intersect1d(subregion_A,subregion_B).size==0 , "Subregion A and B overlap"
             assert np.intersect1d(subregion_A,subregion_C).size==0 , "Subregion A and C overlap"
@@ -1044,37 +1227,47 @@ class CT_tensor:
             return S_A+ S_B + S_C-S_AB-S_AC-S_BC+S_ABC
     
     def update_history(self,vec=None,op=None,p=None):
+        """Update history of state vector (`vec`), operators (`op`) and probability (`p`).
+        For state vector, simply append it to the list
+        For operators, append the four dictionaries to the list, this is different from `CT_quantum.update_history`. Not easy to visualize but useful in `reference_control`.
+        For probability, assembly the probability map first and append it to the list, such that the `prob_history` is in the format of [torch.tensor,torch.tensor,...]
+
+
+        Parameters
+        ----------
+        vec : torch.tensor, optional
+            state vector, by default None
+        op : tuple of dict, optional
+            operators, by default None
+        p : tuple of prob, optional
+            probabilities, by default None
+        """
         '''Maybe I should abandon the previous way of storing history, why not just use the four *_idx_dict to store the history directly? This will also create comvenience when call it'''
         if vec is not None:
             if self.store_vec:
                 self.vec_history.append(vec.cpu().clone())
             else:
-                # Verbose but reserved for later use
+                # Reserved for later use
                 pass
-        
         if op is not None:
             if self.store_op:
                 # 
                 self.op_history.append(op)
             else:
                 pass
-
         if p is not None:
             if self.store_prob:
-                # self.prob_history.append(p)
                 p_0,p_2_dict=p
                 dtype=torch.float64 if self.dtype['torch']==torch.complex128 else torch.float32
                 ctrl_idx_dict,ctrl_0_idx_dict,proj_idx_dict,proj_0_idx_dict=op
                 p_map=torch.ones((3,self.rng.shape[0] if self.ensemble is None else self.ensemble,self.ensemble_m),device=self.device,dtype=dtype)
                 flip_prob=torch.ones((3,self.rng.shape[0] if self.ensemble is None else self.ensemble,self.ensemble_m),device=self.device,dtype=int)
-
                 if ctrl_idx_dict[True].numel()>0:
                     p_map[0,ctrl_idx_dict[True][:,0]]=p_0
                     if ctrl_0_idx_dict[False].numel()>0:
                         flip_prob[0][tuple((ctrl_0_idx_dict[False]).T)]=-1
                         p_map[0]*=flip_prob[0]
                         p_map[0]+=((1-flip_prob[0])/2)
-                
                 for idx,key in enumerate(p_2_dict.keys()):
                     p_map[idx+1,proj_idx_dict[key][True][:,0]]=p_2_dict[key]
                     if key in proj_0_idx_dict:
@@ -1087,15 +1280,35 @@ class CT_tensor:
                 pass
         
     def normalize_(self,vec):
-        '''normalization after projection
-        This also assume vec has 1 ensemble index, because it only happens after projection which involves measurment'''
-        # norm=torch.sqrt(torch.tensordot(vec.conj(),vec,dims=(list(range(self.L_T)),list(range(self.L_T)))))
+        """Normalize the state vector `vec` in-place. This assumes that the state vector has 1 ensemble index, because it only happens after projection which involves measurment, where the two `ensemble` and `ensemble_m` indices are flatten.
+
+        Parameters
+        ----------
+        vec : torch.tensor
+            state vector after normalization
+        """
         norm=torch.sqrt(torch.einsum(vec.conj(),[...,0],vec,[...,0],[0]))
         if self.debug:
             assert torch.all(norm != 0) , f'Cannot normalize: norm is zero {norm}'
         vec/=norm
     
     def inner_prob(self,vec,pos,n_list):
+        """Calculate the probability of measuring 0 at position `pos` for the state vector `vec`. This assumes `vec` has two ensemble index.
+
+        Parameters
+        ----------
+        vec : torch.tensor
+            state vector
+        pos : int or list of int
+            position(s) to measure
+        n_list : int or list of int
+            measuring outcome(s)
+
+        Returns
+        -------
+        torch.tensor
+            probability of measuring 0 at position `pos`
+        """
         '''probability of `vec` of measuring `n_list` at `pos`
         convert the vector to tensor (2,2,..), take about the specific pos-th index, and flatten to calculate the inner product'''
         idx_list=np.array([slice(None)]*self.L_T)
@@ -1113,57 +1326,80 @@ class CT_tensor:
         return inner_prod
 
     def XL_tensor(self,vec):
-        '''directly swap 0 and 1
-        A new version using roll seems much faster than the in-place operation which is to my surprise'''
+        """Flip the last qubit of the state vector `vec` in-place (excluding the ancilla qubit). `roll` seems much faster than the in-place swap as done in `CT_quantum.XL_tensor`. This works both one and two ensemble indices.
+
+        Parameters
+        ----------
+        vec : torch.tensor
+            state vector
+
+        Returns
+        -------
+        torch.tensor
+            state vector after flipping the last qubit
+        """
         vec=torch.roll(vec,1,dims=self.L-1)
-        # if not self.ancilla:
-        #     vec[...,[0,1],:]=vec[...,[1,0],:]
-        # else:
-        #     vec[...,[0,1],:,:]=vec[...,[1,0],:,:]
         return vec
 
     def P_tensor_(self,vec,n,pos):
+        """Directly set zero at tensor[...,0,:] =0 for n==1 and tensor[...,1,:] =0 for n==0. This works both one and two ensemble indices. 
+
+        Parameters
+        ----------
+        vec : torch.tensor
+            state vector
+        n : int, {0,1}
+            out come of the projection
+        pos : int, {0,1,...,L-1}
+            position to apply the projection.
+        """
         '''directly set zero at tensor[...,0] =0 for n==1 and tensor[...,1] =0 for n==0'
         This is an in-placed operation
         '''
         idx_list=[slice(None)]*vec.dim()
         idx_list[pos]=1-n
         vec[idx_list]=0
-        # if pos is None or pos==self.L-1:
-        #     # project the last site
-        #     if not self.ancilla:
-        #         vec[...,1-n,:,:]=0
-        #     else:
-        #         vec[...,1-n,:,:,:]=0
-        # if pos == self.L-2:
-        #     if not self.ancilla:
-        #         vec[...,1-n,:,:,:]=0
-        #     else:
-        #         vec[...,1-n,:,:,:,:]=0
-        # return vec
 
     def T_tensor(self,vec,left=True):
-        '''directly transpose the index of tensor
-        There could be an alternative way of whether using tensor operation'''
-        
+        """Left or right shift the state vector `vec` in-place. This works both one and two ensemble indices.
+
+        Parameters
+        ----------
+        vec : torch.tensor
+            state vector
+        left : bool, optional
+            if true, left shift, else, right shift, by default True
+
+        Returns
+        -------
+        torch.tensor
+            state vector after shift
+        """
         if left:
             idx_list=list(range(1,self.L))+[0]
         else:
             idx_list=[self.L-1]+list(range(self.L-1))
         
         idx_list=idx_list+list(range(self.L,vec.dim()))
-        # if self.ancilla:
-        #     idx_list.append(self.L)
-        # idx_list.append(self.L_T)
-        # idx_list.append(self.L_T+1)
         return vec.permute(idx_list)
+
     def S_tensor(self,vec,rng,size=None):
-        '''Scrambler only applies to the last two indices
-        This is a bit confusing, because when using np.rng, `rng` is interpreted as a list of `rng`, but when using torch seed, `rng` is reused as the len of list, CHANGE IT FOR CONSISTENCY LATER
-        Now split two as rng and size.
-        
-        If rng is a list, size is ignored, and the size is the length of rng.
-        if rng is not a list, single rng is passed to self.U, and size is the number of U(4)'''
+        """Apply scrambler to the state vector `vec` in-place. This works only for two ensemble indices.
+
+        Parameters
+        ----------
+        vec : torch.tensor
+            state vector
+        rng : list of np.rng or torch.Generator
+            Random generators to use. If rng is a list, `size` is ignored. 
+        size : int, optional
+            size of ensemble, by default None. If none, the size is inferred from the length of `rng`
+
+        Returns
+        -------
+        torch.tensor
+            state vector
+        """
         if self.ensemble is None:
             U_4=torch.from_numpy(np.array([U(4,rng).astype(self.dtype['numpy']).reshape((2,)*4) for rng in rng])).unsqueeze(1)
             if self.gpu:
@@ -1173,14 +1409,24 @@ class CT_tensor:
 
 
         if not self.ancilla:
-            # vec=torch.einsum(vec,[...,0,1,2],U_4,[2,3,4,0,1],[...,3,4,2])
             vec=torch.einsum(vec,[...,0,1,2,3],U_4,[2,3,4,5,0,1],[...,4,5,2,3]) # ... (L-2,L-1)(C,m) * (c,m)(L-2,L-1)'(L-2,L-1) -> ... (L-2,L-1)'(C,m)
         else:
-            # vec=torch.einsum(vec,[...,0,1,2,3],U_4,[3,4,5,0,1],[...,4,5,2,3])
             vec=torch.einsum(vec,[...,0,1,2,3,4],U_4,[3,4,5,6,0,1],[...,5,6,2,3,4]) # ... (L-2,L-1)(anc)(C,m) * (c,m)(L-2,L-1)'(L-2,L-1) -> ... (L-2,L-1)'(anc)(C,m)
         return vec
 
     def ZZ_tensor(self,vec):
+        """Calculate the order parameter for Neel state. The order parameter is defined as \sum_{i=0..L-1} <Z_iZ_{i+1}>, where Z_i is the Pauli Z matrix at site i.
+
+        Parameters
+        ----------
+        vec : torch.tensor
+            state vector
+
+        Returns
+        -------
+        torch.tensor
+            order parameter for Neel state
+        """
         rs=0
         for i in range(self.L):
             for zi in range(2):
@@ -1191,6 +1437,18 @@ class CT_tensor:
         return -rs/self.L
     
     def Z_tensor(self,vec):
+        """Calculate the order parameter for Ferromagnetic state. The order parameter is defined as \sum_{i=0..L-1} <Z_i>, where Z_i is the Pauli Z matrix at site i.
+
+        Parameters
+        ----------
+        vec : torch.tensor
+            state vector
+
+        Returns
+        -------
+        torch.tensor
+            order parameter for ferromagnetic state
+        """
         rs=0
         for i in range(self.L):
             P0=self.inner_prob(vec,[i],[0])
@@ -1198,7 +1456,13 @@ class CT_tensor:
         return rs/self.L
 
     def adder_gpu(self):
-        ''' This is not a full adder, which assume the leading digit in the input bitstring is zero (because of the T^{-1}R_L, the leading bit should always be zero).'''
+        """Calculate the shift adder index, namely, `old_index` -> `new_index`, and `not_new_index` should be all zero. This is not a full adder, which assume the leading digit in the input bitstring is zero (because of the T^{-1}R_L, the leading bit should always be zero). 
+
+        Returns
+        -------
+        tuple of torch.tensor
+            new_idx, old_idx, not_new_idx
+        """
         if self.xj==set([Fraction(1,3),Fraction(2,3)]):
             int_1_6=(int(Fraction(1,6)*2**self.L)|1)
             int_1_3=(int(Fraction(1,3)*2**self.L))
@@ -1218,13 +1482,19 @@ class CT_tensor:
 
             not_new_idx=torch.ones(2**(self.L_T),dtype=bool,device=self.device)
             not_new_idx[new_idx]=False
-            
 
             return new_idx, old_idx, not_new_idx
         if self.xj==set([0]):
             return torch.tensor([]), torch.tensor([]),torch.tensor([])
 
     def adder_tensor_(self,vec):
+        """Apply the index shuffling of `vec` using the `old_idx` and `new_idex` generated from `adder_gpu`. 
+
+        Parameters
+        ----------
+        vec : torch.tensor
+            state vector 
+        """
         new_idx=self.new_idx.flatten()
         old_idx=self.old_idx.flatten()
         not_new_idx=self.not_new_idx.flatten()
@@ -1234,15 +1504,24 @@ class CT_tensor:
             vec_flatten[not_new_idx]=0
 
     def generate_binary(self,idx_list,p,rng,dummy=False):
-        '''Generate boolean list, given probability `p` and seed `self.rng[idx]`
-        scalar `p` is verbose, but this is for consideration of speed?? Check whether still true?
-        `idx_list` will now become a index list for circuit, which takes value of 0 to `ensemble`.(??)
-        If `idx_list` is [0,1,2..], then this is for the index of circuit
-        If `idx_list` is for [(0,0,),(0,1)...(1,0)], this is for the index of both circuit and outcome (last two indices).
-        rng : self.rng if for outcome
-              self.rng_C: if for circuit
-        dummy run is for reproducibility.
-        '''
+        """Generate boolean list, given probability `p` and seed `rng`.
+
+        Parameters
+        ----------
+        idx_list : list of list
+            [[ensemble...],[ensemble_m...]], the second list could be None if no slice on `ensemble_m` axis needed.
+        p : float or torch.tensor
+            if float, this is used in np.rng, if torch.tensor, this is used in torch.rng, the shape should be (idx_list[0].shape[0], ensemble_m)
+        rng : list of np.rng or torch.Generator
+            Random generators to use. 
+        dummy : bool, optional
+            If false, no dictionary will be generated, and exists for reproducibility, by default False
+
+        Returns
+        -------
+        dict
+            A dictionary to store the index of operators.
+        """
         if self.ensemble is None:
             true_list=[]
             false_list=[]
@@ -1276,7 +1555,6 @@ class CT_tensor:
                 # for randomness at circuit leverl
                 p=p*torch.ones((idx_list[0].shape[0],),device=self.device)
 
-            # p_rand=torch.bernoulli(p,generator=rng)
             p_rand=torch.rand(*(idx_list[i].shape[0] for i in range(len(idx_list))),device=self.device,generator=rng)
             if not dummy:
                 p_rand=(p_rand<p)
@@ -1290,6 +1568,22 @@ class CT_tensor:
 
 
     def U(self,n,rng,size):
+        """Generate random unitary matrix of size `n` using Haar measure. This works for two ensemble indices.
+
+        Parameters
+        ----------
+        n : int
+            dimension of unitary matrix
+        rng : list of np.rng or torch.Generator
+            if rng is list, `size` is ignored, and the size is inferred from the length of `rng`. Othewise, generate `size` copies. random unitary matrices.
+        size : tuple
+            (ensemble, ensemble_m) copies of random unitary matrices. Usually ensemble_m=1 because the state within same circuit index should evolve under the same unitary matrix..
+
+        Returns
+        -------
+        torch.tensor, (ensemble, ensemble_m, n, n)
+            stacked unitary matrix
+        """
         dtype=torch.float64 if self.dtype['torch']==torch.complex128 else torch.float32
         im = torch.randn((*size,n, n), device=self.device,dtype=dtype,generator=rng)
         re = torch.randn((*size,n, n), device=self.device,dtype=dtype,generator=rng)
@@ -1297,11 +1591,26 @@ class CT_tensor:
         Q,R=torch.linalg.qr(z)
         r_diag=torch.diagonal(R,dim1=-2,dim2=-1)
         Lambda=torch.diag_embed(r_diag/torch.abs(r_diag))
-        # Q=torch.einsum(Q,[0,1,2],Lambda,[0,2,3],[0,1,3])
         Q=torch.einsum(Q,[...,0,1],Lambda,[...,1,2],[...,0,2])
         return Q
 
     def Haar_state(self,ensemble,rng,k=1):
+        """Generate `k` Haar random state. This works for two ensemble indices.
+
+        Parameters
+        ----------
+        ensemble : int
+            `ensemble` copies of Haar random state.
+        rng : list of np.rng or torch.Generator
+            random generators to use. 
+        k : int, {0,1}, optional
+            1 or 2 Haar random state, if k=2, the two states are orthogonal, by default 1
+
+        Returns
+        -------
+        torch.tensor, (2,2,...,k,ensemble)
+            Haar random state
+        """
         # Generate k orthorgonal Haar random state
         dtype=torch.float64 if self.dtype['torch']==torch.complex128 else torch.float32
         state=torch.randn((2,)*(self.L+1)+(k,)+(ensemble,),device=self.device,dtype=dtype,generator=rng) # wf, re/im, k,ensemble

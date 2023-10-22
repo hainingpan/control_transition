@@ -7,6 +7,8 @@ from mpi4py.futures import MPIPoolExecutor
 from mpi4py import MPI
 from fractions import Fraction
 from tqdm import tqdm
+import pickle
+
 def convert_to_fraction(fraction_str):
     fractions = []
     for item in fraction_str.split(","):
@@ -22,8 +24,8 @@ def run_quantum(inputs):
     ct=CT_quantum(L=L,seed=idx,xj=xj)
     for _ in range(100):
         ct.encoding()
-    O=ct.order_parameter()
-    return O
+    # return ct.order_parameter()
+    return ct.half_system_entanglement_entropy()
 
 if __name__=="__main__":
     comm = MPI.COMM_WORLD
@@ -40,3 +42,6 @@ if __name__=="__main__":
     with MPIPoolExecutor() as executor:
         results=list(tqdm(executor.map(run_quantum,inputs),total=len(inputs)))
     print('T={:.4f}s'.format(time.time()-st))
+    with open('CT_En{:d}_pctrl(0)_pproj(0)_L({:d})_xj({:s}).pickle'.format(args.es,args.L,args.xj.replace('/','-')),'wb') as f:
+        pickle.dump(results, f)
+

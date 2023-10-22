@@ -112,7 +112,7 @@ class CT_quantum:
         store_prob : bool, optional
             store the history of each probability at projective measurement, by default False
         seed : int, optional
-            the random seed in the measurement outcome; if `seed_vec` and `seed_C` is unspecificed, this random seed also applied to initial state vector and circuit, by default None
+            (1) the random seed in the measurement outcome; (2) if `seed_vec` and `seed_C` is None, this random seed also applied to initial state vector and circuit, by default None
         seed_vec : int, optional
             the random seed in the state vector, by default None
         seed_C : int, optional
@@ -235,6 +235,8 @@ class CT_quantum:
             assert np.abs(vec[vec.shape[0]//2:]).sum() == 0, f'first qubit is not zero ({np.abs(vec[vec.shape[0]//2:]).sum()}) after right shift '
 
         # Adder
+        if vec.ndim >1 :
+            vec=vec.flatten()
         if not self.ancilla:
             vec=self.adder()@vec
         else:
@@ -482,7 +484,7 @@ class CT_quantum:
         float, 0<=inner_prod<=1
             probability of measuring 0 at position `pos`
         """
-        if vec.ndim != (2,)*L_T:
+        if vec.ndim != (2,)*self.L_T:
             vec=vec.reshape((2,)*self.L_T)
         idx_list=[slice(None)]*self.L_T
         idx_list[pos]=0
@@ -764,7 +766,7 @@ def Haar_state(L,ensemble,rng=None,k=1):
     norm=np.sqrt((np.abs(z[:,0,:])**2).sum(axis=0)) # (ensemble,)
     z[:,0,:]/=norm
     if k==2:
-        z[:,1,:]=z[:,1,:]-(z[:,0,:].conj()*z[:,1,:]).sum(axis=0)*z[:,0,:]
+        z[:,1,:]-=(z[:,0,:].conj()*z[:,1,:]).sum(axis=0)*z[:,0,:]
         norm=np.sqrt((np.abs(z[:,1,:])**2).sum(axis=0))
         z[:,1,:]/=norm
     return z
@@ -788,22 +790,30 @@ def bin_pad(x,L):
     return (bin(x)[2:]).rjust(L,'0')
 
 class CT_tensor:
-    def __init__(self,L,history=False,seed=None,x0=None,xj=set([Fraction(1,3),Fraction(2,3)]),_eps=1e-10, ancilla=False,gpu=False,complex128=True,ensemble=None):
+    def __init__(self,L,store_vec=False,store_op=False,store_prob=False,seed=None,seed_vec=None,seed_C=None,x0=None,xj=set([Fraction(1,3),Fraction(2,3)]),_eps=1e-10, ancilla=False,gpu=False,complex128=True,ensemble=None,ensemble_m=1,debug=False):
         '''the tensor is saved as (0,1,...L-1, ancilla, ensemble)
         complex128: True:complex128 or False: complex64, default `complex128`
-        if `seed` is a list, use numpy rng generator, the ensemble size is the same as `len(seed)`
-        if `seed` is a number, use torch random, the ensemble size is given by `ensemble`
+        First mode: if `seed` is a list, this corresponds to the single state vector simulation defined in `CT_quantum`. Numpy rng generator are used, the ensemble size is the same as `len(seed)`, `ensemble` should be None.
+        Second mode: when `seed_vec` and `seed_C` are not `None` and `seed` is a number. `seed` will apply to initial state vec, and circuit. In this case, ensemble size is simply the total number of random samples with different circuit, and `ensemble_m` is 1 (by default). (For backwards compability) `
+        Third mode: when `seed_vec` and `seed_C` and `seed` are all not None. `ensemble` and `ensemble_m` controls the number of different circuit and number of outcome in each circuit.
         '''
         self.L=L # physical L, excluding ancilla
         self.L_T=L+1 if ancilla else L # tensor L, ancilla
-        self.history=history
+        self.store_vec=store_vec
+        self.store_op=store_op
+        self.store_prob=store_prob
         self.gpu=gpu
         self.device=self._initialize_device()
         self.ensemble=ensemble
+        self.ensemble_m=ensemble_m
+        # self.mode=self._check_mode(seed, seed_vec, seed_C)
         self.rng=self._initialize_random_seed(seed)
+        self.rng_vec=self._initialize_random_seed(seed_vec) if seed_vec is not None else self.rng
+        self.rng_C=self._initialize_random_seed(seed_C) if seed_C is not None else self.rng
 
-        self.x0=self._initialize_x0(x0)
+        self.x0=x0
         self.op_history=[]  
+        self.prob_history=[]  
         self.ancilla=ancilla
         self.dtype={'numpy':np.complex128,'torch':torch.complex128} if complex128 else {'numpy':np.complex64,'torch':torch.complex64}
         self.vec=self._initialize_vector()
@@ -812,6 +822,7 @@ class CT_tensor:
         self.xj=set(xj)
         self.op_list=self._initialize_op()
         self.new_idx,self.old_idx, self.not_new_idx=self.adder_gpu()
+        self.debug=debug
 
     def _initialize_device(self):
         if self.gpu:
@@ -823,72 +834,67 @@ class CT_tensor:
                 raise ValueError('CUDA is not available')
         else:
             print('Using cpu')
+
     
     def _initialize_random_seed(self,seed):
         if self.ensemble is None:
             return np.array([np.random.default_rng(s) for s in seed])
         else:
-            torch.manual_seed(seed)
-
-    def _initialize_x0(self,x0):
-        if self.ensemble is None:
-            return [rng.random() if x is None else x for rng,x in zip(self.rng,([x0]*len(self.rng)) if x0 is None else x0)]
-        else:
-            if x0 is None:
-                return torch.randint(0,2**self.L,(self.ensemble,),device=self.device)
-            else:
-                return x0
+            # torch.manual_seed(seed)
+            rng=torch.Generator(device=self.device)
+            rng.manual_seed(seed)
+            return rng
 
     def _initialize_vector(self):
-        '''save using an array of 2^L
+        '''save using (2,)*L+[(anc,)]+(C,M)
         if ancilla qubit: it should be put to the last qubit, positioned as L, entangled with L-1'''
-        if not self.ancilla:
-            if self.ensemble is None:
-                vec=torch.zeros((2,)*(self.L)+(len(self.x0),),dtype=self.dtype['torch'],device=self.device)
-                vec_int=np.array([np.hstack([dec2bin(x0,self.L),[idx]]) for idx,x0 in enumerate(self.x0)])
-                vec[tuple((vec_int).T)]=1
-            else:
-                # vec=torch.zeros((2,)*(self.L)+(len(self.x0),),dtype=self.dtype['torch'],device=self.device)
-                # vec_v=vec.view((-1,self.ensemble))
-                # vec_v[self.x0]=1
-                vec=self.Haar_state(k=1)[...,0,:]
+        k=1 if not self.ancilla else 2
+        if self.ensemble is None:
+            vec=torch.sqrt(torch.tensor(1/k,device=self.device,dtype=self.dtype['torch']))*torch.from_numpy(np.array([Haar_state(self.L,ensemble=1,rng=rng,k=k).astype(self.dtype['numpy']).reshape((2,)*(self.L_T)) for rng in self.rng_vec])).permute(list(range(1,self.L_T+1))+[0]).unsqueeze(-1)
+            if self.gpu:
+                vec=vec.cuda()
         else:
-            if self.ensemble is None:
-                vec=torch.from_numpy(np.array([Haar_state(self.L,ensemble=1,rng=rng).astype(self.dtype['numpy']).reshape((2,)*(self.L+1)) for rng in self.rng])).permute(list(range(1,self.L_T+1))+[0])/np.sqrt(2)
-                if self.gpu:
-                    vec=vec.cuda()
-            else:
-                vec=self.Haar_state(k=2)/torch.sqrt(torch.tensor(2,device=self.device))
+            # Though verbose, but optimize for GPU RAM usage, squeeze() tends to reserve huge memory
+            # factor=torch.sqrt(torch.tensor(1/k,device=self.device,dtype=self.dtype['torch']))
+            factor=np.sqrt(1/k)
+            vec_single=factor*self.Haar_state(k=k,ensemble=self.ensemble,rng=self.rng_vec)
+            if k == 1:
+                vec_single=vec_single[...,0,:]
+            
+            vec_single=vec_single.unsqueeze(-1)
+            vec_single=vec_single.repeat(*(1,)*self.L_T+(1,self.ensemble_m,))
+
+            vec=vec_single
         return vec
     
     def _initialize_op(self):
-        return {"C0":partial(self.control_map,n=0),
-                "C1":partial(self.control_map,n=1),
-                f"P{self.L-1}0":partial(self.projection_map,pos=self.L-1,n=0),
-                f"P{self.L-1}1":partial(self.projection_map,pos=self.L-1,n=1),
-                f"P{self.L-2}0":partial(self.projection_map,pos=self.L-2,n=0),
-                f"P{self.L-2}1":partial(self.projection_map,pos=self.L-2,n=1),
-                "chaotic":self.Bernoulli_map,
-                "I":lambda x:x
+        return {("C",0):partial(self.control_map,n=0),
+                ("C",1):partial(self.control_map,n=1),
+                (f"P{self.L-1}",0):partial(self.projection_map,pos=self.L-1,n=0),
+                (f"P{self.L-1}",1):partial(self.projection_map,pos=self.L-1,n=1),
+                (f"P{self.L-2}",0):partial(self.projection_map,pos=self.L-2,n=0),
+                (f"P{self.L-2}",1):partial(self.projection_map,pos=self.L-2,n=1),
+                ("B",):self.Bernoulli_map,
+                ("I",):lambda x:x
                 }
-
-    def Bernoulli_map(self,vec,rng):
+    def Bernoulli_map(self,vec,rng=None,size=None):
+        # This always applied to the whole ensemble_m axis
         vec=self.T_tensor(vec,left=True)
-        vec=self.S_tensor(vec,rng=rng)
+        rng=self.rng_C if rng is None else rng
+        vec=self.S_tensor(vec,rng=rng,size=size)
         return vec
 
     def control_map(self,vec,n):
         '''control map depends on the outcome of the measurement of n'''
         # projection on the last bits
-        self.P_tensor_(vec,n)
+        self.P_tensor_(vec,n,self.L-1)
         if n==1:
-            vec=self.XL_tensor_(vec)
+            vec=self.XL_tensor(vec)
         self.normalize_(vec)
         # right shift 
         vec=self.T_tensor(vec,left=False)
 
         # Adder
-        
         if not vec.is_contiguous():
             vec=vec.contiguous()
         self.adder_tensor_(vec)
@@ -905,51 +911,83 @@ class CT_tensor:
     def encoding(self,vec=None):
         if vec is None:
             vec=self.vec
-        
-        vec=self.op_list['chaotic'](vec,self.ensemble)
+        vec=self.op_list[("B",)](vec,size=self.ensemble)
         self.update_history(vec)
-
-        
-
-
+        return vec
     def random_control(self,p_ctrl,p_proj,vec=None):
         '''the competition between chaotic and random, where the projection can only be applied after the unitary
         Notation: L-1 is the last digits'''
         if vec is None:
             vec=self.vec
 
-        ctrl_idx_dict=self.generate_binary(torch.arange(self.rng.shape[0] if self.ensemble is None else self.ensemble,device=self.device), p_ctrl)
-        ctrl_0_idx_dict={}
-        if len(ctrl_idx_dict[True])>0:
-            vec_ctrl=vec[...,ctrl_idx_dict[True]]
+        ctrl_idx_dict=self.generate_binary([torch.arange(self.rng.shape[0] if self.ensemble is None else self.ensemble,device=self.device),], p_ctrl,rng=self.rng_C)
+        ctrl_0_idx_dict={} # whether projected to zero in control map
+        p_0=None
+        if (ctrl_idx_dict[True]).numel()>0:
+            # apply control map
+            vec_ctrl=vec[...,ctrl_idx_dict[True][:,0],:]
             p_0= self.inner_prob(vec=vec_ctrl,pos=[self.L-1],n_list=[0]) # prob for 0
-            ctrl_0_idx_dict=self.generate_binary(ctrl_idx_dict[True], p_0)
+            ctrl_idx=[ctrl_idx_dict[True][:,0], torch.arange(self.ensemble_m,device=self.device)]
+            ctrl_0_idx_dict=self.generate_binary(ctrl_idx, p_0,rng=self.rng)
             for key,idx in ctrl_0_idx_dict.items():
                 if len(idx)>0:
-                    vec[...,idx]=self.op_list[f'C{0*key+1*(1-key)}'](vec[...,idx])
+                    vec[...,idx[:,0],idx[:,1]]=self.op_list[("C",1-key)](vec[...,idx[:,0],idx[:,1]])
 
-        proj_idx_dict={} # {pos: {True: .., False:..}} whether pos is projected
+        proj_idx_dict={} # {pos: {True: .., False:..}} whether pos is projected site
         proj_0_idx_dict={} # {pos: {True:.., False: ..}} if projected, whether it is projected to 0 
-        if len(ctrl_idx_dict[False])>0:
-            rng_ctrl=self.rng[ctrl_idx_dict[False].cpu().numpy()] if self.ensemble is None else ctrl_idx_dict[False].shape[0]
-            vec[...,ctrl_idx_dict[False]]=self.op_list['chaotic'](vec[...,ctrl_idx_dict[False]],rng_ctrl)
+        p_2_dict={}
+        if (ctrl_idx_dict[False]).numel()>0:
+            # apply Bernoulli map
+            rng_ctrl=self.rng_C[ctrl_idx_dict[False][:,0].cpu().numpy()] if self.ensemble is None else None
+            size=ctrl_idx_dict[False].shape[0] if self.ensemble is not None else None
+            vec[...,ctrl_idx_dict[False][:,0],:]=self.op_list[("B",)](vec[...,ctrl_idx_dict[False][:,0],:],size=size,rng=rng_ctrl)
             for pos in [self.L-1,self.L-2]:
-                proj_idx_dict[pos]=self.generate_binary(ctrl_idx_dict[False], p_proj)
-                if len(proj_idx_dict[pos][True])>0:
-                    vec_p=vec[...,proj_idx_dict[pos][True]]
+                proj_idx_dict[pos]=self.generate_binary([ctrl_idx_dict[False][:,0],], p_proj,rng=self.rng_C)
+                if (proj_idx_dict[pos][True]).numel()>0:
+                    vec_p=vec[...,proj_idx_dict[pos][True][:,0],:]
                     p_2 = self.inner_prob(vec=vec_p,pos=[pos], n_list=[0])
-                    proj_0_idx_dict[pos]=self.generate_binary(proj_idx_dict[pos][True], p_2)
+                    proj_idx=[proj_idx_dict[pos][True][:,0], torch.arange(self.ensemble_m,device=self.device)]
+                    p_2_dict[pos]=p_2
+                    proj_0_idx_dict[pos]=self.generate_binary(proj_idx, p_2,rng=self.rng)
                     for key,idx in proj_0_idx_dict[pos].items():
                         if len(idx)>0:
-                            vec[...,idx]=self.op_list[f'P{pos}{0*key+1*(1-key)}'](vec[...,idx])
-        self.update_history(vec,ctrl_idx_dict,ctrl_0_idx_dict,proj_idx_dict,proj_0_idx_dict)
+                            vec[...,idx[:,0],idx[:,1]]=self.op_list[(f'P{pos}',(1-key))](vec[...,idx[:,0],idx[:,1]])
+                            
+        self.update_history(vec,(ctrl_idx_dict,ctrl_0_idx_dict,proj_idx_dict,proj_0_idx_dict),(p_0,p_2_dict))
 
-    def random_control_uniform(self,p_ctrl,p_proj,vec=None):
+    def reference_control(self,op,vec=None):
         # Instead of each sample randomly choice the quantum trajectories, here all samples follow the same circuit, which is used in cross entropy benchmark
         if vec is None:
             vec=self.vec
-        p=torch.random() # p[0] is 
-    
+        ctrl_idx_dict,ctrl_0_idx_dict,proj_idx_dict,proj_0_idx_dict=op
+        self.generate_binary([torch.arange(self.rng.shape[0] if self.ensemble is None else self.ensemble,device=self.device),], p=None,rng=self.rng_C,dummy=True) # dumm run for controvl vs Bernoulli
+        p_0=None
+        if (ctrl_idx_dict[True]).numel()>0:
+            vec_ctrl=vec[...,ctrl_idx_dict[True][:,0],:]
+            p_0= self.inner_prob(vec=vec_ctrl,pos=[self.L-1],n_list=[0])
+            ctrl_idx=[ctrl_idx_dict[True][:,0], torch.arange(self.ensemble_m,device=self.device)]
+            self.generate_binary(ctrl_idx, p=None,rng=self.rng,dummy=True)
+            for key, idx in ctrl_0_idx_dict.items():
+                if len(idx)>0:
+                    vec[...,idx[:,0],idx[:,1]]=self.op_list[("C",1-key)](vec[...,idx[:,0],idx[:,1]])
+        p_2_dict={}
+        if (ctrl_idx_dict[False]).numel()>0:
+            rng_ctrl=self.rng_C[ctrl_idx_dict[False][:,0].cpu().numpy()] if self.ensemble is None else None
+            size=ctrl_idx_dict[False].shape[0] if self.ensemble is not None else None
+            vec[...,ctrl_idx_dict[False][:,0],:]=self.op_list[("B",)](vec[...,ctrl_idx_dict[False][:,0],:],size=size,rng=rng_ctrl)
+            for pos in [self.L-1,self.L-2]:
+                vec_p=vec[...,proj_idx_dict[pos][True][:,0],:]
+                p_2 = self.inner_prob(vec=vec_p,pos=[pos], n_list=[0])
+                proj_idx=[proj_idx_dict[pos][True][:,0], torch.arange(self.ensemble_m,device=self.device)]
+                p_2_dict[pos]=p_2
+                self.generate_binary([ctrl_idx_dict[False][:,0],], p=None,rng=self.rng_C,dummy=True)
+                if (proj_idx_dict[pos][True]).numel()>0:
+                    proj_idx=[proj_idx_dict[pos][True][:,0], torch.arange(self.ensemble_m,device=self.device)]
+                    self.generate_binary(proj_idx, p=None,rng=self.rng,dummy=True)
+                    for key,idx in proj_0_idx_dict[pos].items():
+                        if len(idx)>0:
+                            vec[...,idx[:,0],idx[:,1]]=self.op_list[(f'P{pos}',1*(1-key))](vec[...,idx[:,0],idx[:,1]])
+        self.update_history(vec,(ctrl_idx_dict,ctrl_0_idx_dict,proj_idx_dict,proj_0_idx_dict),(p_0,p_2_dict))
 
     def order_parameter(self,vec=None):
         if vec is None:
@@ -969,38 +1007,32 @@ class CT_tensor:
             driver=None
         subregion=list(subregion)
         not_subregion=[i for i in range(self.L_T) if i not in subregion]
-        vec=vec.permute([self.L_T]+subregion+not_subregion)
-        vec_=vec.contiguous().view((self.rng.shape[0] if self.ensemble is None else self.ensemble,2**len(subregion),2**len(not_subregion)))
+        vec=vec.permute([self.L_T,self.L_T+1]+subregion+not_subregion)
+        vec_=vec.contiguous().view((self.rng.shape[0] if self.ensemble is None else self.ensemble,self.ensemble_m,2**len(subregion),2**len(not_subregion)))
 
         S=torch.linalg.svdvals(vec_,driver=driver)
         S_pos=torch.clamp(S,min=1e-18)
-        return torch.sum(-torch.log(S_pos**2)*S_pos**2,axis=1)
-
-        # vNE=torch.empty((self.rng.shape[0] if self.ensemble is None else self.ensemble,),dtype=torch.float)
-        # for i in range(self.rng.shape[0] if self.ensemble is None else self.ensemble):
-        #     S=torch.linalg.svdvals(vec_[i,:,:],driver=driver)
-        #     S_pos=S[S>1e-18]
-        #     vNE[i]=(-torch.sum(torch.log(S_pos**2)*S_pos**2).item())
-        # return vNE
+        return torch.sum(-torch.log(S_pos**2)*S_pos**2,axis=-1)
 
     def half_system_entanglement_entropy(self,vec=None,selfaverage=False):
         '''\sum_{i=0..L/2-1}S_([i,i+L/2)) / (L/2)'''
         if vec is None:
             vec=self.vec
         if selfaverage:
-            S_A=np.mean([self.von_Neumann_entropy_pure(np.arange(i,i+self.L//2),vec) for i in range(self.L//2)])
+            S_A=torch.mean([self.von_Neumann_entropy_pure(np.arange(i,i+self.L//2),vec) for i in range(self.L//2)])
         else:
             S_A=self.von_Neumann_entropy_pure(np.arange(self.L//2),vec)
         return S_A
 
     def tripartite_mutual_information(self,subregion_A,subregion_B, subregion_C,selfaverage=False,vec=None):
-        assert np.intersect1d(subregion_A,subregion_B).size==0 , "Subregion A and B overlap"
-        assert np.intersect1d(subregion_A,subregion_C).size==0 , "Subregion A and C overlap"
-        assert np.intersect1d(subregion_B,subregion_C).size==0 , "Subregion B and C overlap"
+        if self.debug:
+            assert np.intersect1d(subregion_A,subregion_B).size==0 , "Subregion A and B overlap"
+            assert np.intersect1d(subregion_A,subregion_C).size==0 , "Subregion A and C overlap"
+            assert np.intersect1d(subregion_B,subregion_C).size==0 , "Subregion B and C overlap"
         if vec is None:
             vec=self.vec
         if selfaverage:
-            return np.mean([self.tripartite_mutual_information((subregion_A+shift)%self.L,(subregion_B+shift)%self.L,(subregion_C+shift)%self.L,selfaverage=False) for shift in range(len(subregion_A))])
+            return torch.mean([self.tripartite_mutual_information((subregion_A+shift)%self.L,(subregion_B+shift)%self.L,(subregion_C+shift)%self.L,selfaverage=False) for shift in range(len(subregion_A))])
         else:
             S_A=self.von_Neumann_entropy_pure(subregion_A,vec=vec)
             S_B=self.von_Neumann_entropy_pure(subregion_B,vec=vec)
@@ -1011,120 +1043,142 @@ class CT_tensor:
             S_ABC=self.von_Neumann_entropy_pure(np.concatenate([subregion_A,subregion_B,subregion_C]),vec=vec)
             return S_A+ S_B + S_C-S_AB-S_AC-S_BC+S_ABC
     
-    def update_history(self,vec=None,ctrl_idx_dict=None,ctrl_0_idx_dict=None,proj_idx_dict=None,proj_0_idx_dict=None):
-        if self.history:
-            if vec is not None:
+    def update_history(self,vec=None,op=None,p=None):
+        '''Maybe I should abandon the previous way of storing history, why not just use the four *_idx_dict to store the history directly? This will also create comvenience when call it'''
+        if vec is not None:
+            if self.store_vec:
                 self.vec_history.append(vec.cpu().clone())
-            if ctrl_idx_dict is not None and ctrl_0_idx_dict is not None and proj_idx_dict is not None and proj_0_idx_dict is not None:
-                op_map=np.empty((self.rng.shape[0] if self.ensemble is None else self.ensemble,),dtype='<U20')
-                op_map[ctrl_0_idx_dict[True]]='C0'
-                op_map[ctrl_0_idx_dict[False]]='C1'
-                op_map[ctrl_idx_dict[False]]='chaotic'
+            else:
+                # Verbose but reserved for later use
+                pass
+        
+        if op is not None:
+            if self.store_op:
+                # 
+                self.op_history.append(op)
+            else:
+                pass
 
-                for pos,idx_dict in proj_0_idx_dict.items():
-                    if len(idx_dict[True])>0:
-                        op_map[idx_dict[True]]=np.char.add(op_map[idx_dict[True]],f'_P{pos}0')
-                    if len(idx_dict[False])>0:
-                        op_map[idx_dict[False]]=np.char.add(op_map[idx_dict[False]],f'_P{pos}1')
+        if p is not None:
+            if self.store_prob:
+                # self.prob_history.append(p)
+                p_0,p_2_dict=p
+                dtype=torch.float64 if self.dtype['torch']==torch.complex128 else torch.float32
+                ctrl_idx_dict,ctrl_0_idx_dict,proj_idx_dict,proj_0_idx_dict=op
+                p_map=torch.ones((3,self.rng.shape[0] if self.ensemble is None else self.ensemble,self.ensemble_m),device=self.device,dtype=dtype)
+                flip_prob=torch.ones((3,self.rng.shape[0] if self.ensemble is None else self.ensemble,self.ensemble_m),device=self.device,dtype=int)
 
-                self.op_history.append(op_map)
-
+                if ctrl_idx_dict[True].numel()>0:
+                    p_map[0,ctrl_idx_dict[True][:,0]]=p_0
+                    if ctrl_0_idx_dict[False].numel()>0:
+                        flip_prob[0][tuple((ctrl_0_idx_dict[False]).T)]=-1
+                        p_map[0]*=flip_prob[0]
+                        p_map[0]+=((1-flip_prob[0])/2)
+                
+                for idx,key in enumerate(p_2_dict.keys()):
+                    p_map[idx+1,proj_idx_dict[key][True][:,0]]=p_2_dict[key]
+                    if key in proj_0_idx_dict:
+                        if (proj_0_idx_dict[key][False]).numel()>0:
+                            flip_prob[idx+1][tuple((proj_0_idx_dict[key][False]).T)]=-1
+                            p_map[idx+1]*=flip_prob[idx+1]
+                            p_map[idx+1]+=((1-flip_prob[idx+1])/2)
+                self.prob_history.append(p_map.prod(dim=0))
+            else:
+                pass
+        
     def normalize_(self,vec):
-        '''normalization after projection'''
+        '''normalization after projection
+        This also assume vec has 1 ensemble index, because it only happens after projection which involves measurment'''
         # norm=torch.sqrt(torch.tensordot(vec.conj(),vec,dims=(list(range(self.L_T)),list(range(self.L_T)))))
         norm=torch.sqrt(torch.einsum(vec.conj(),[...,0],vec,[...,0],[0]))
-
-        # assert torch.all(norm != 0) , f'Cannot normalize: norm is zero {norm}'
+        if self.debug:
+            assert torch.all(norm != 0) , f'Cannot normalize: norm is zero {norm}'
         vec/=norm
     
     def inner_prob(self,vec,pos,n_list):
         '''probability of `vec` of measuring `n_list` at `pos`
         convert the vector to tensor (2,2,..), take about the specific pos-th index, and flatten to calculate the inner product'''
         idx_list=np.array([slice(None)]*self.L_T)
-        # for p,n in zip(pos,n_list):
-        #     idx_list[p]=n
         idx_list[pos]=n_list
         vec_0=vec[tuple(idx_list)]
-        inner_prod=torch.einsum(vec_0.conj(),[...,0],vec_0,[...,0],[0])
+        inner_prod=torch.einsum(vec_0.conj(),[...,0,1],vec_0,[...,0,1],[0,1])
 
-        # assert torch.all(torch.abs(inner_prod.imag)<self._eps), f'probability for outcome 0 is not real {inner_prod}'
+        if self.debug:
+            assert torch.all(torch.abs(inner_prod.imag)<self._eps), f'probability for outcome 0 is not real {inner_prod}'
         inner_prod=inner_prod.real
-        # assert torch.all(inner_prod>-self._eps), f'probability for outcome 0 is not positive {inner_prod}'
-        # inner_prod=torch.maximum(0,inner_prod)
-        # assert torch.all(inner_prod<1+self._eps), f'probability for outcome 1 is not smaller than 1 {inner_prod}'
-        # inner_prod=torch.minimum(inner_prod,1)
+        if self.debug:
+            assert torch.all(inner_prod>-self._eps), f'probability for outcome 0 is not positive {inner_prod}'
+            assert torch.all(inner_prod<1+self._eps), f'probability for outcome 1 is not smaller than 1 {inner_prod}'
         inner_prod=torch.clamp_(inner_prod,min=0,max=1)
         return inner_prod
 
-    def XL_tensor_(self,vec):
+    def XL_tensor(self,vec):
         '''directly swap 0 and 1
         A new version using roll seems much faster than the in-place operation which is to my surprise'''
         vec=torch.roll(vec,1,dims=self.L-1)
         # if not self.ancilla:
         #     vec[...,[0,1],:]=vec[...,[1,0],:]
-            
-
         # else:
         #     vec[...,[0,1],:,:]=vec[...,[1,0],:,:]
-
         return vec
 
-    def P_tensor_(self,vec,n,pos=None):
+    def P_tensor_(self,vec,n,pos):
         '''directly set zero at tensor[...,0] =0 for n==1 and tensor[...,1] =0 for n==0'
         This is an in-placed operation
         '''
-        # vec_tensor=vec.reshape((2,)*self.L_T)
-        if pos is None or pos==self.L-1:
-            # project the last site
-            if not self.ancilla:
-                vec[...,1-n,:]=0
-            else:
-                vec[...,1-n,:,:]=0
-        if pos == self.L-2:
-            if not self.ancilla:
-                vec[...,1-n,:,:]=0
-            else:
-                vec[...,1-n,:,:,:]=0
+        idx_list=[slice(None)]*vec.dim()
+        idx_list[pos]=1-n
+        vec[idx_list]=0
+        # if pos is None or pos==self.L-1:
+        #     # project the last site
+        #     if not self.ancilla:
+        #         vec[...,1-n,:,:]=0
+        #     else:
+        #         vec[...,1-n,:,:,:]=0
+        # if pos == self.L-2:
+        #     if not self.ancilla:
+        #         vec[...,1-n,:,:,:]=0
+        #     else:
+        #         vec[...,1-n,:,:,:,:]=0
         # return vec
 
     def T_tensor(self,vec,left=True):
         '''directly transpose the index of tensor
         There could be an alternative way of whether using tensor operation'''
         
-        idx_list=torch.arange(self.L_T)
-        # shift=-1 if left else 1
         if left:
-            idx_list_2=list(range(1,self.L))+[0]
+            idx_list=list(range(1,self.L))+[0]
         else:
-            idx_list_2=[self.L-1]+list(range(self.L-1))
-        if self.ancilla:
-            idx_list_2.append(self.L)
-        idx_list_2.append(self.L_T)
-        return vec.permute(idx_list_2)
-
-    def S_tensor(self,vec,rng):
+            idx_list=[self.L-1]+list(range(self.L-1))
+        
+        idx_list=idx_list+list(range(self.L,vec.dim()))
+        # if self.ancilla:
+        #     idx_list.append(self.L)
+        # idx_list.append(self.L_T)
+        # idx_list.append(self.L_T+1)
+        return vec.permute(idx_list)
+    def S_tensor(self,vec,rng,size=None):
         '''Scrambler only applies to the last two indices
-        This is a bit confusing, because when using np.rng, `rng` is interpreted as a list of `rng`, but when using torch seed, `rng` is reused as the len of list, CHANGE IT FOR CONSISTENCY LATER'''
-        if not isinstance(rng, int):
-            U_4=torch.from_numpy(np.array([U(4,rng).astype(self.dtype['numpy']).reshape((2,)*4) for rng in rng]))
+        This is a bit confusing, because when using np.rng, `rng` is interpreted as a list of `rng`, but when using torch seed, `rng` is reused as the len of list, CHANGE IT FOR CONSISTENCY LATER
+        Now split two as rng and size.
+        
+        If rng is a list, size is ignored, and the size is the length of rng.
+        if rng is not a list, single rng is passed to self.U, and size is the number of U(4)'''
+        if self.ensemble is None:
+            U_4=torch.from_numpy(np.array([U(4,rng).astype(self.dtype['numpy']).reshape((2,)*4) for rng in rng])).unsqueeze(1)
             if self.gpu:
                 U_4=U_4.cuda()
         else:
-            # U_4=U(4,size=rng).astype(self.dtype['numpy'])
-            # U_4=torch.tensor(U_4,device=self.device).view((rng,2,2,2,2))
-
-            # Another advantage is the reproducibility
-            U_4=self.U(4,size=rng).view((rng,2,2,2,2))
+            U_4=self.U(4,rng=rng,size=(size,1)).reshape((size,1,2,2,2,2)).expand(-1,self.ensemble_m,-1,-1,-1,-1)
 
 
         if not self.ancilla:
-            # vec=torch.tensordot(vec,U_4,dims=([self.L-2,self.L-1],[2,3])).permute(list(range(self.L-2))+[self.L-1,self.L]+[self.L-2])
-            vec=torch.einsum(vec,[...,0,1,2],U_4,[2,3,4,0,1],[...,3,4,2])
-            return vec
+            # vec=torch.einsum(vec,[...,0,1,2],U_4,[2,3,4,0,1],[...,3,4,2])
+            vec=torch.einsum(vec,[...,0,1,2,3],U_4,[2,3,4,5,0,1],[...,4,5,2,3]) # ... (L-2,L-1)(C,m) * (c,m)(L-2,L-1)'(L-2,L-1) -> ... (L-2,L-1)'(C,m)
         else:
-            # vec=torch.tensordot(vec,U_4,dims=([self.L-2,self.L-1],[2,3])).permute(list(range(self.L-2))+[self.L,self.L+1]+[self.L-2,self.L-1])
-            vec=torch.einsum(vec,[...,0,1,2,3],U_4,[3,4,5,0,1],[...,4,5,2,3])
-            return vec
+            # vec=torch.einsum(vec,[...,0,1,2,3],U_4,[3,4,5,0,1],[...,4,5,2,3])
+            vec=torch.einsum(vec,[...,0,1,2,3,4],U_4,[3,4,5,6,0,1],[...,5,6,2,3,4]) # ... (L-2,L-1)(anc)(C,m) * (c,m)(L-2,L-1)'(L-2,L-1) -> ... (L-2,L-1)'(anc)(C,m)
+        return vec
 
     def ZZ_tensor(self,vec):
         rs=0
@@ -1175,75 +1229,88 @@ class CT_tensor:
         old_idx=self.old_idx.flatten()
         not_new_idx=self.not_new_idx.flatten()
         if (new_idx).shape[0]>0 and (old_idx).shape[0]>0:
-            vec_flatten=vec.view((-1,vec.shape[-1]))    
-            vec_flatten[new_idx,:]=vec_flatten[old_idx,:]
-            vec_flatten[not_new_idx,:]=0
+            vec_flatten=vec.view((2**self.L_T,-1))    
+            vec_flatten[new_idx]=vec_flatten[old_idx]
+            vec_flatten[not_new_idx]=0
 
-    def generate_binary(self,idx_list,p):
+    def generate_binary(self,idx_list,p,rng,dummy=False):
         '''Generate boolean list, given probability `p` and seed `self.rng[idx]`
-        scalar `p` is verbose, but this is for consideration of speed'''
+        scalar `p` is verbose, but this is for consideration of speed?? Check whether still true?
+        `idx_list` will now become a index list for circuit, which takes value of 0 to `ensemble`.(??)
+        If `idx_list` is [0,1,2..], then this is for the index of circuit
+        If `idx_list` is for [(0,0,),(0,1)...(1,0)], this is for the index of both circuit and outcome (last two indices).
+        rng : self.rng if for outcome
+              self.rng_C: if for circuit
+        dummy run is for reproducibility.
+        '''
         if self.ensemble is None:
-            # idx_dict={True:[],False:[]}
             true_list=[]
             false_list=[]
             if isinstance(p, float) or isinstance(p, int):
-                for idx in idx_list:
-                    random=self.rng[idx].random()
-                    # boolean=(random<=p)
-                    # idx_dict[boolean].append(idx)
-                    if random<=p:
-                        true_list.append(idx)
-                    else:
-                        false_list.append(idx)
+                # for randomness at circuit leverl
+                for idx in idx_list[0]:
+                    random=rng[idx].random()
+                    if not dummy:
+                        if random<=p:
+                            true_list.append([idx,0])
+                        else:
+                            false_list.append([idx,0])
             else:
-                assert len(idx_list) == len(p), f'len of idx_list {len(idx_list)} is not same as len of p {len(p)}'
-                for idx,p in zip(idx_list,p):
-                    random=self.rng[idx].random()
-                    # boolean=torch.equal((random<=p),self.tensor_true)
-                    # idx_dict[boolean].append(idx)
-                    if random<=p:
-                        true_list.append(idx)
-                    else:
-                        false_list.append(idx)
-
-            idx_dict={True:torch.tensor(true_list,dtype=int,device=self.device),False:torch.tensor(false_list,dtype=int,device=self.device)}
-            return idx_dict
+                # for randomness at outcome level
+                if not dummy and self.debug:
+                    assert len(idx_list[0]) == len(p), f'len of idx_list {len(idx_list)} is not same as len of p {len(p)}'
+                # Assume that ensemble_m=1, because this is for np.rng, therefore it always append [idx,0]
+                for idx,p in zip(idx_list[0],p):
+                    random=rng[idx].random() # This assume idx_list is always in the shape of (-1,2), which means, it is for the outcome randomness
+                    if not dummy:
+                        if random<=p:
+                            true_list.append([idx,0])
+                        else:
+                            false_list.append([idx,0])
+                        
+            if not dummy:
+                idx_dict={True:torch.tensor(true_list,dtype=int,device=self.device),False:torch.tensor(false_list,dtype=int,device=self.device)}
+                return idx_dict
         else:
             if isinstance(p, float) or isinstance(p, int):
-                p=p*torch.ones((idx_list.shape[0],),device=self.device)
+                # for randomness at circuit leverl
+                p=p*torch.ones((idx_list[0].shape[0],),device=self.device)
 
-            p_rand=torch.bernoulli(p)
-            true_idx=torch.nonzero(p_rand,as_tuple=True)[0]
-            false_idx=torch.nonzero(1-p_rand,as_tuple=True)[0]
-            # p_rand=torch.rand((idx_list.shape[0],),device=self.device)
-            
-            true_tensor=idx_list[true_idx]
-            false_tensor=idx_list[false_idx]
-            idx_dict={True:true_tensor,False:false_tensor}
-            return idx_dict
+            # p_rand=torch.bernoulli(p,generator=rng)
+            p_rand=torch.rand(*(idx_list[i].shape[0] for i in range(len(idx_list))),device=self.device,generator=rng)
+            if not dummy:
+                p_rand=(p_rand<p)
+                true_idx=torch.nonzero(p_rand,)
+                false_idx=torch.nonzero(~p_rand)
+                
+                true_tensor=torch.vstack([idx_list[i][true_idx[:,i]] for i in range(true_idx.shape[-1])]).T
+                false_tensor=torch.vstack([idx_list[i][false_idx[:,i]] for i in range(false_idx.shape[-1])]).T
+                idx_dict={True:true_tensor,False:false_tensor}
+                return idx_dict
 
 
-    def U(self,n,size,):
+    def U(self,n,rng,size):
         dtype=torch.float64 if self.dtype['torch']==torch.complex128 else torch.float32
-        im = torch.randn((size,n, n), device=self.device,dtype=dtype)
-        re = torch.randn((size,n, n), device=self.device,dtype=dtype)
+        im = torch.randn((*size,n, n), device=self.device,dtype=dtype,generator=rng)
+        re = torch.randn((*size,n, n), device=self.device,dtype=dtype,generator=rng)
         z=torch.complex(re,im)
         Q,R=torch.linalg.qr(z)
         r_diag=torch.diagonal(R,dim1=-2,dim2=-1)
         Lambda=torch.diag_embed(r_diag/torch.abs(r_diag))
-        Q=torch.einsum(Q,[0,1,2],Lambda,[0,2,3],[0,1,3])
+        # Q=torch.einsum(Q,[0,1,2],Lambda,[0,2,3],[0,1,3])
+        Q=torch.einsum(Q,[...,0,1],Lambda,[...,1,2],[...,0,2])
         return Q
 
-    def Haar_state(self,k):
+    def Haar_state(self,ensemble,rng,k=1):
         # Generate k orthorgonal Haar random state
         dtype=torch.float64 if self.dtype['torch']==torch.complex128 else torch.float32
-        state=torch.randn((2,)*(self.L+1)+(k,)+(self.ensemble,),device=self.device,dtype=dtype) # wf, re/im, k,ensemble
+        state=torch.randn((2,)*(self.L+1)+(k,)+(ensemble,),device=self.device,dtype=dtype,generator=rng) # wf, re/im, k,ensemble
         state=torch.complex(state[:,0,:,:],state[:,1,:,:]) # wf, k, ensemble
         norm=(torch.einsum(state[...,0,:].conj(),[...,0],state[...,0,:],[...,0],[0])) # ensemble
         state[...,0,:]/=torch.sqrt(norm)
         if k==2:
             overlap=torch.einsum(state[...,0,:].conj(),[...,0],state[...,1,:],[...,0],[0]) #ensemble
-            state[...,1,:]-=overlap*vec0
+            state[...,1,:]-=overlap*state[...,0,:]
             norm=(torch.einsum(state[...,1,:].conj(),[...,0],state[...,1,:],[...,0],[0])) 
             state[...,1,:]/=torch.sqrt(norm)
         return state

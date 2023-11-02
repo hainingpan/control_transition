@@ -19,23 +19,25 @@ def run_tensor(gpu,complex128):
         torch.cuda.reset_peak_memory_stats()
         print(torch.cuda.get_device_name(),flush=True)
 
-
+    print("PyTorch Version:", torch.__version__)
+    print("CUDA Version:", torch.version.cuda)
     st0=time.time()
     # ct=CT_tensor(L=18,gpu=True,seed=list(range(200)),x0=None,ancilla=False,history=False,complex128=True)
     ct=CT_tensor(L=16,gpu=gpu,seed=0,x0=None,ancilla=True,history=False,complex128=complex128,ensemble=2000)
     init_timestamp=time.time()
-    for _ in range(ct.L**2//2):
-        ct.random_control(1,0)
-        torch.cuda.empty_cache()
+    # for _ in range(ct.L**2//2):
+    #     ct.random_control(1,0)
+    #     torch.cuda.empty_cache()
     evo_timestamp=time.time()
-    _=ct.order_parameter()
+    # _=ct.order_parameter()
     OP_timestamp=time.time()
-    _=ct.half_system_entanglement_entropy()
+    # _=ct.half_system_entanglement_entropy()
+    # _=ct.von_Neumann_entropy_pure([ct.L])
     EE_timestamp=time.time()
-    _=ct.tripartite_mutual_information(np.arange(ct.L//4),np.arange(ct.L//4)+ct.L//4,np.arange(ct.L//4)+ct.L//4*2)
+    # _=ct.tripartite_mutual_information(np.arange(ct.L//4),np.arange(ct.L//4)+ct.L//4,np.arange(ct.L//4)+ct.L//4*2)
     TMI_timestamp=time.time()
     peak_memory_MB = torch.cuda.max_memory_allocated()/ (1024 ** 2)
-    return init_timestamp-st0,evo_timestamp-st0,OP_timestamp-evo_timestamp,EE_timestamp-OP_timestamp,TMI_timestamp-EE_timestamp,peak_memory_MB, ct.vec.numel()*ct.vec.element_size()/1024**2
+    return init_timestamp-st0,evo_timestamp-init_timestamp,OP_timestamp-evo_timestamp,EE_timestamp-OP_timestamp,TMI_timestamp-EE_timestamp,peak_memory_MB, ct.vec.numel()*ct.vec.element_size()/1024**2
  
 for gpu in [torch.cuda.is_available(),]:
     for complex128 in [False,]:

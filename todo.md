@@ -1,0 +1,9 @@
+- [x] cross check with single 
+- [x] benchmark gpu usage
+- [ ] normalization can be fixed by reusing projection
+- [x] the circuit seed_C are the same
+- [ ] docstring for tensor
+- [ ] torch.compile[https://pytorch.org/tutorials/intermediate/torch_compile_tutorial.html#comparison-to-torchscript-and-fx-tracing], torchscript [https://pytorch.org/docs/stable/jit.html], [https://ppwwyyxx.com/blog/2022/TorchScript-Tracing-vs-Scripting/]
+- [ ] multiple GPU training [https://pytorch.org/docs/master/generated/torch.nn.DataParallel.html], [https://huggingface.co/docs/transformers/perf_train_gpu_many], [https://stackoverflow.com/questions/60069977/sharing-gpu-memory-between-process-on-a-same-gpu-with-pytorch]
+- [ ] can `control_map` and `projection_map` be mapped using united way? Namely, tensor[[0,2,3]]=1 is in-place or not?
+- [ ] Naming: "Random_control" -> "Born rule"; "reference_control" -> "Force measurement"?

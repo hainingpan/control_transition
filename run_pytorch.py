@@ -20,7 +20,7 @@ def convert_to_fraction(fraction_str):
 
 def run_tensor(inputs):
     L,p_ctrl,p_proj,xj,complex128,seed,ancilla,ensemble=inputs
-    ct=CT_tensor(L=L,x0=None,seed=seed,history=False,xj=xj,gpu=True,complex128=complex128,_eps=1e-5,ensemble=ensemble,ancilla=ancilla)
+    ct=CT_tensor(L=L,seed=seed,xj=xj,gpu=True,complex128=complex128,_eps=1e-5,ensemble=ensemble,ancilla=ancilla)
     T_max=ct.L**2//2 if ancilla else 2*ct.L**2
     for _ in range(T_max):
         ct.random_control(p_ctrl=p_ctrl,p_proj=p_proj)

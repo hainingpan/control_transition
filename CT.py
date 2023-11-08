@@ -20,7 +20,7 @@ class CT_classical:
         self.rng_vec=np.random.default_rng(seed_vec) if seed_vec is not None else self.rng # control initial state
         self.rng_C=np.random.default_rng(seed_C) if seed_C is not None else self.rng # control circuit
         self.x0=x0
-        self.xj=xj
+        self.xj=set(xj)
         self.binary_xj=self._initialize_binary(xj)
         self.allone=(1<<(self.L))-1 # 0b1..11
         self.mask101=((1<<self.L-1))+5 # 0b10..0101

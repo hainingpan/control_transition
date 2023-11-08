@@ -8,71 +8,126 @@ import torch
 
 # needs optimizations, docstrings.
 class CT_classical:
-    def __init__(self,L,history=False,seed=None,x0=None):
+    def __init__(self,L,store_vec=False,store_op=False,seed=None,seed_vec=None,seed_C=None,x0=None,xj=set([Fraction(1,3),Fraction(2,3)]),random=True):
         '''
-        
+        use int to represent the state vector, the float number is int/2**L
         if classical is False: save using an array of 2^L
         '''
         self.L=L
-        self.history=history
-        self.rng=np.random.default_rng(seed)
-        # self.x0=self.rng.random() if x0 is None else x0
+        self.store_vec=store_vec
+        self.store_op=store_op
+        self.rng=np.random.default_rng(seed)    # for backward campatibility
+        self.rng_vec=np.random.default_rng(seed_vec) if seed_vec is not None else self.rng # control initial state
+        self.rng_C=np.random.default_rng(seed_C) if seed_C is not None else self.rng # control circuit
         self.x0=x0
+        self.xj=xj
+        self.binary_xj=self._initialize_binary(xj)
+        self.allone=(1<<(self.L))-1 # 0b1..11
+        self.mask101=((1<<self.L-1))+5 # 0b10..0101
+        self.leading=(1<<(self.L-1))+1 # 0b10..1
         self.op_history=[]  # control: true, Bernoulli: false
-        self.binary=self._initialize_binary([Fraction(1,6),Fraction(1,3)])
-        self.binary[Fraction(1,6)][-1]=1
-
         self.vec=self._initialize_vector()
         self.vec_history=[self.vec]
+        self.random=random  # if true, scrambler is random, else, use fixed mapping `self.scrambler`
+        self.scrambler={7:1,6:4,5:0,4:3,3:2,2:5,1:6,0:7}
+
+    def _initialize_binary(self,xj):
+        binary_xj={xj/2:int(xj*(1<<(self.L-1))) for xj in xj}
+        if Fraction(1,6) in binary_xj:
+            binary_xj[Fraction(1,6)]+=1
+        return binary_xj
+
     def _initialize_vector(self):
         '''save using an array of L'''
         if self.x0 is None:
-            vec=self.rng.integers(low=0,high=2,size=(self.L,))
+            vec=self.rng_vec.integers(low=0,high=1<<self.L)
         else:
-            vec=dec2bin(self.x0,self.L)
+            vec=int(self.x0*(1<<self.L))
         return vec
-    def _initialize_binary(self,x_list):
-        return {x:dec2bin(x, self.L) for x in x_list}
 
     def Bernoulli_map(self,vec):
-        vec=np.roll(vec,-1)
-        vec[-3:]=self.rng.permutation(vec[-3:])        
+        vec=self.T(vec,left=True)
+        vec=self.S(vec)        
         return vec
     
     def control_map(self,vec):
-        vec[-1]=0
-        vec=np.roll(vec,1)
-        if vec[1]==0:
-            # attract to 1/3
-            # here is a slight difference for the last digit, but this does not matter in the thermaldynamic limit
-            vec=add_binary(vec,self.binary[Fraction(1,6)])
-        else:
-            # attract to 2/3
-            vec=add_binary(vec,self.binary[Fraction(1,3)])
+        vec=self.T(vec&(~1),left=False)
+        vec=self.adder(vec)
         return vec
 
     def random_control(self,p):
         '''
         p: the control probability
         '''
-        p0=self.rng.random()
-        vec=self.vec_history[-1].copy()
+        vec=self.vec_history[-1]
+        p0=self.rng_C.random()
+
         if p0<p:
             vec=self.control_map(vec)
         else:
             vec=self.Bernoulli_map(vec)
-        if self.history:
-            self.vec_history.append(vec)
-            self.op_history.append((p0<p))
-        else:
-            self.vec_history=[vec]
-            self.op_history=[(p0<p)]
+        self.update_history(vec,(p0<p))
+    
+    def update_history(self,vec=None,op=None):
+        if vec is not None:
+            if self.store_vec:
+                self.vec_history.append(vec)
+            else:
+                self.vec_history=[vec]
+        if op is not None:
+            if self.store_op:
+                self.op_history.append(op)
+            else:
+                self.op_history=[op]
 
-    def order_parameter(self):
-        vec=self.vec_history[-1].copy()
-        vec_Z=2*vec-1
-        vec_Z_shift=np.roll(vec_Z,1)
-        return -vec_Z@vec_Z_shift/self.L
+    def T(self,vec,left=True):
+        if left:
+            vec=(vec>>self.L-1)^(vec<<1)&(self.allone)
+        else:
+            vec=(vec>>1)^(vec<<self.L-1)&(self.allone)
+        return vec
+    def S(self,vec):
+        first=vec&(~0b111)
+        if self.random:
+            vec=first+self.rng_C.integers(low=0,high=8)
+        else:
+            last_three=vec&0b111
+            vec=first+self.scrambler[last_three]
+        return vec
+
+    def adder(self,vec):
+        if self.xj==set([Fraction(1,3),Fraction(2,3)]):
+            secondbit=(vec>>(self.L-2))
+            if secondbit==0:
+                # add 1/6
+                vec+=self.binary_xj[Fraction(1,6)]
+            else:
+                # add 1/3
+                vec+=self.binary_xj[Fraction(1,3)]
+            # handle extra attractors, if 1..0x1, then 1..0(1-x)1, if 0..1x0, then 0..1(1-x)0 [shouldn't enter this branch..]
+            if vec&self.mask101 in [4,self.leading]:
+                # flip the second bit from the right
+                vec=vec^2
+            return vec
+        if self.xj==set([0]):
+            return vec
+        raise NotImplementedError(f"{self.xj} is not implemented")
+
+    def order_parameter(self,vec=None):
+        if vec is None:
+            vec=self.vec_history[-1]
+        if self.xj== set([Fraction(1,3),Fraction(2,3)]):
+            O=self.ZZ(vec)
+        elif self.xj == set([0]):
+            O=self.Z(vec)
+        return O
+        
+    def ZZ(self,vec):
+        zz=self.T(vec,left=True)^vec
+        return 2*bin(zz).count('1')/self.L-1
+
+    def Z(self,vec):
+        return 1-2*bin(vec).count('1')/self.L
 
 def add_binary(vec1,vec2):
     ''' adder for two `vec1` and `vec2`
@@ -692,7 +747,8 @@ class CT_quantum:
             ones=np.ones(2**(self.L-1))
             return sp.coo_matrix((ones,(new_idx,old_idx)),shape=(2**self.L,2**self.L))
         if self.xj==set([0]):
-            return sp.eye(2**self.L)  
+            return sp.eye(2**self.L)
+        raise NotImplementedError(f"{self.xj} is not implemented")
 
 def dec2bin(x,L):
     """convert a float number x in [0,1) to the binary form with maximal length of L, where the leading 0 as integer part is truncated. Example, 1/3 is 010101...
@@ -1486,6 +1542,7 @@ class CT_tensor:
             return new_idx, old_idx, not_new_idx
         if self.xj==set([0]):
             return torch.tensor([]), torch.tensor([]),torch.tensor([])
+        raise NotImplementedError(f"{self.xj} is not implemented")
 
     def adder_tensor_(self,vec):
         """Apply the index shuffling of `vec` using the `old_idx` and `new_idex` generated from `adder_gpu`. 

@@ -24,7 +24,7 @@ class CT_classical:
         self.binary_xj=self._initialize_binary(xj)
         self.allone=(1<<(self.L))-1 # 0b1..11
         self.mask101=((1<<self.L-1))+5 # 0b10..0101
-        self.leading=(1<<(self.L-1))+1 # 0b10..1
+        self.leading=(1<<(self.L-1))+1 # 0b10..01
         self.op_history=[]  # control: true, Bernoulli: false
         self.vec=self._initialize_vector()
         self.vec_history=[self.vec]
@@ -51,7 +51,8 @@ class CT_classical:
         return vec
     
     def control_map(self,vec):
-        vec=self.T(vec&(~1),left=False)
+        vec=self.P(vec)
+        vec=self.T(vec,left=False)
         vec=self.adder(vec)
         return vec
 
@@ -79,7 +80,13 @@ class CT_classical:
                 self.op_history.append(op)
             else:
                 self.op_history=[op]
-
+    def P(self,vec):
+        if self.xj==set([Fraction(1,3),Fraction(2,3)]) or self.xj==set([0]):
+            vec=vec&(~1)
+        else:
+            if bin(self.leading&vec).count('1')%2==0:
+                vec=vec^1 # flip the last bit
+        return vec
     def T(self,vec,left=True):
         if left:
             vec=(vec>>self.L-1)^(vec<<1)&(self.allone)
@@ -108,10 +115,12 @@ class CT_classical:
             if vec&self.mask101 in [4,self.leading]:
                 # flip the second bit from the right
                 vec=vec^2
-            return vec
-        if self.xj==set([0]):
-            return vec
-        raise NotImplementedError(f"{self.xj} is not implemented")
+        elif self.xj==set([0]) or self.xj==set([Fraction(1,3),Fraction(-1,3)]):
+            pass
+        else:
+            raise NotImplementedError(f"{self.xj} is not implemented")
+        return vec
+        
 
     def order_parameter(self,vec=None):
         if vec is None:
@@ -120,6 +129,8 @@ class CT_classical:
             O=self.ZZ(vec)
         elif self.xj == set([0]):
             O=self.Z(vec)
+        elif self.xj== set([Fraction(1,3),Fraction(-1,3)]):
+            O=self.ZZ(vec)
         return O
         
     def ZZ(self,vec):

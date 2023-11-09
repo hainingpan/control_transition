@@ -6,3 +6,4 @@
 *.output
 *.log
 *.txt
+*.hdf5

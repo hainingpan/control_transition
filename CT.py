@@ -245,12 +245,16 @@ class CT_quantum:
         dict of operators
             possible operators in the circuit
         """ 
-        return {("C",0):partial(self.control_map,n=0),
-                ("C",1):partial(self.control_map,n=1),
-                (f"P{self.L-1}",0):partial(self.projection_map,pos=self.L-1,n=0),
-                (f"P{self.L-1}",1):partial(self.projection_map,pos=self.L-1,n=1),
-                (f"P{self.L-2}",0):partial(self.projection_map,pos=self.L-2,n=0),
-                (f"P{self.L-2}",1):partial(self.projection_map,pos=self.L-2,n=1),
+        return {("C",0):partial(self.control_map,pos=[self.L-1],n=[0]),
+                ("C",1):partial(self.control_map,pos=[self.L-1],n=[1]),
+                ("C",0,0):partial(self.control_map,pos=[0,self.L-1],n=[0,0]),
+                ("C",0,1):partial(self.control_map,pos=[0,self.L-1],n=[0,1]),
+                ("C",1,0):partial(self.control_map,pos=[0,self.L-1],n=[1,0]),
+                ("C",1,1):partial(self.control_map,pos=[0,self.L-1],n=[1,1]),
+                (f"P{self.L-1}",0):partial(self.projection_map,pos=[self.L-1],n=[0]),
+                (f"P{self.L-1}",1):partial(self.projection_map,pos=[self.L-1],n=[1]),
+                (f"P{self.L-2}",0):partial(self.projection_map,pos=[self.L-2],n=[0]),
+                (f"P{self.L-2}",1):partial(self.projection_map,pos=[self.L-2],n=[1]),
                 ("B",):self.Bernoulli_map,
                 ("I",):lambda x:x
                 }
@@ -272,7 +276,7 @@ class CT_quantum:
         vec=self.S_tensor(vec,rng=self.rng_C)
         return vec
     
-    def control_map(self,vec,n):
+    def control_map(self,vec,n,pos):
         """Apply control map the state vector `vec`. The control map is a combination of projection, right shift and an adder. The projection is applied to the last qubit (if the outcome is 1, sigma_x is applied to flip the last qubit); the right shift is applied to all qubits in the system (excluding the ancilla qubit); the adder is the shuffle of the state basis. 
 
         Parameters
@@ -287,12 +291,8 @@ class CT_quantum:
         np.array, shape=(2**L_T,)
             state vector after the control map
         """
-        # projection on the last bits
-        vec=self.P_tensor(vec,n)
-        if n==1:
-            vec=self.XL_tensor(vec)
-        if self.normalization:
-            vec=self.normalize(vec)
+        
+        vec=self.R_tensor(vec,n,pos)
 
         # right shift 
         vec=self.T_tensor(vec,left=False)
@@ -329,6 +329,7 @@ class CT_quantum:
         if self.normalization:
             vec=self.normalize(vec)
         return vec
+
     def encoding(self):
         """Encoding process: Randomly apply Bernoulli map
         """
@@ -350,12 +351,19 @@ class CT_quantum:
         """ 
         vec=self.vec_history[-1].copy()
         
-
         op_l=[]
         if self.rng_C.random()<=p_ctrl:
             # control map
-            p_0=self.inner_prob(vec, pos=self.L-1,)
-            op=('C',0) if self.rng.random()<=p_0 else ('C',1)
+            if self.xj==set([Fraction(1,3),Fraction(2,3)]) or self.xj==set([0]):
+                p_0=self.inner_prob(vec, pos=[self.L-1],n_list=[0])
+                op=('C',0) if self.rng.random()<=p_0 else ('C',1)
+            elif self.xj==set([Fraction(1,3),Fraction(-1,3)]):
+                p={n:self.inner_prob(vec,pos=[0,self.L-1],n_list=n) for n in [(0,0),(0,1),(1,0)]}
+                              
+                p[(1,1)]=np.clip(1-p[(0,0)]-p[(0,1)]-p[(1,0)],0,1)
+                op=self.rng.choice([(0,0),(0,1),(1,0),(1,1)],p=[p[(0,0)],p[(0,1)],p[(1,0)],p[(1,1)]])
+                
+                op=('C',)+tuple(op)
         else:
             # chaotic map
             op=('B',)
@@ -366,7 +374,7 @@ class CT_quantum:
             for idx,pos in enumerate([self.L-1,self.L-2]):
                 if self.rng_C.random()<p_proj:
                     # projection map
-                    p_2=(self.inner_prob(vec, pos=pos,))
+                    p_2=(self.inner_prob(vec, pos=[pos],n_list=[0]))
                     op_2=(f"P{pos}",0) if self.rng.random()<p_2 else (f"P{pos}",1)
                     vec=self.op_list[op_2](vec)
                     op_l.append(op_2)
@@ -409,7 +417,7 @@ class CT_quantum:
         """
         if vec is None:
             vec=self.vec_history[-1].copy()
-        if self.xj== set([Fraction(1,3),Fraction(2,3)]):
+        if self.xj== set([Fraction(1,3),Fraction(2,3)]) or self.xj==set([Fraction(1,3),Fraction(-1,3)]):
             O=self.ZZ_tensor(vec)
         elif self.xj == set([0]):
             O=self.Z_tensor(vec)
@@ -534,7 +542,7 @@ class CT_quantum:
             else:
                 self.prob_history=[p]
 
-    def inner_prob(self,vec,pos):
+    def inner_prob(self,vec,pos,n_list):
         """Calculate the probability of measuring 0 at position `pos` for the state vector `vec`. First, convert the vector to tensor (2,2,..), take about the specific `pos`-th index, and flatten to calculate the inner product.
 
         Parameters
@@ -551,8 +559,8 @@ class CT_quantum:
         """
         if vec.ndim != (2,)*self.L_T:
             vec=vec.reshape((2,)*self.L_T)
-        idx_list=[slice(None)]*self.L_T
-        idx_list[pos]=0
+        idx_list=np.array([slice(None)]*self.L_T)
+        idx_list[pos]=n_list
         vec_0=vec[tuple(idx_list)].flatten()
         inner_prod=vec_0.conj()@vec_0
         if self.debug:
@@ -599,43 +607,57 @@ class CT_quantum:
         """
         if vec.ndim!=self.L_T:
             vec=vec.reshape((2,)*self.L_T)
-        if not self.ancilla:
-            vec=vec[...,[1,0]]
-        else:
-            vec=vec[...,[1,0],:]
+        # if not self.ancilla:
+        #     vec=vec[...,[1,0]]
+        # else:
+        #     vec=vec[...,[1,0],:]
+        vec=np.roll(vec,1,axis=self.L-1)
         return vec
 
-    def P_tensor(self,vec,n,pos=None):
-        """Directly set zero at tensor[...,0] =0 for n==1 and tensor[...,1] =0 for n==0
+    # def P_tensor(self,vec,n,pos=None):
+    #     """Directly set zero at tensor[...,0] =0 for n==1 and tensor[...,1] =0 for n==0
 
-        Parameters
-        ----------
-        vec : numpy.array, shape=(2**L_T,) or (2,)*L_T
-            state vector
-        n : int, {0,1}
-            outcome of projection
-        pos : int, optional
-            position of projection, if None, apply to the last qubit excluding ancilla qubit, by default None
+    #     Parameters
+    #     ----------
+    #     vec : numpy.array, shape=(2**L_T,) or (2,)*L_T
+    #         state vector
+    #     n : int, {0,1}
+    #         outcome of projection
+    #     pos : int, optional
+    #         position of projection, if None, apply to the last qubit excluding ancilla qubit, by default None
 
-        Returns
-        -------
-        numpy.array, shape=(2,)*L_T
-            state vector after projection
-        """
+    #     Returns
+    #     -------
+    #     numpy.array, shape=(2,)*L_T
+    #         state vector after projection
+    #     """
+    #     if vec.ndim!=self.L_T:
+    #         vec=vec.reshape((2,)*self.L_T)
+    #     if isinstance(n,list):
+    #         n=n[0]
+    #     if isinstance(pos,list):
+    #         pos=pos[0]
+
+    #     if pos is None or pos==self.L-1:
+    #         # project the last site
+    #         if not self.ancilla:
+    #             vec[...,1-n]=0
+    #         else:
+    #             vec[...,1-n,:]=0
+    #     if pos == self.L-2:
+    #         if not self.ancilla:
+    #             vec[...,1-n,:]=0
+    #         else:
+    #             vec[...,1-n,:,:]=0
+    #     return vec
+
+    def P_tensor(self,vec,n,pos):
         if vec.ndim!=self.L_T:
             vec=vec.reshape((2,)*self.L_T)
-        vec=vec.reshape((2,)*self.L_T)
-        if pos is None or pos==self.L-1:
-            # project the last site
-            if not self.ancilla:
-                vec[...,1-n]=0
-            else:
-                vec[...,1-n,:]=0
-        if pos == self.L-2:
-            if not self.ancilla:
-                vec[...,1-n,:]=0
-            else:
-                vec[...,1-n,:,:]=0
+        for n_i,pos_i in zip(n,pos):
+            idx_list=[slice(None)]*self.L_T
+            idx_list[pos_i]=1-n_i
+            vec[tuple(idx_list)]=0
         return vec
 
     def T_tensor(self,vec,left=True):
@@ -685,7 +707,20 @@ class CT_quantum:
         else:
             vec=vec.reshape((2**(self.L-2),2**2,2)).transpose((1,0,2)).reshape((2**2,2**(self.L-1)))
             return (U_4@vec).reshape((2**2,2**(self.L-2),2)).transpose((1,0,2))
-
+    
+    def R_tensor(self,vec,n,pos):
+        vec=self.P_tensor(vec,n,pos)
+        if self.xj==set([Fraction(1,3),Fraction(2,3)]) or self.xj==set([0]):
+            # projection on the last bits
+            if n[0]==1:
+                vec=self.XL_tensor(vec)
+        elif self.xj==set([Fraction(1,3),Fraction(-1,3)]):
+            if n[0]^n[1]==0:
+                vec=self.XL_tensor(vec)
+        if self.normalization:
+            vec=self.normalize(vec)
+        return vec
+    
     def ZZ_tensor(self,vec):
         """Calculate the order parameter for Neel state. The order parameter is defined as \sum_{i=0..L-1} <Z_iZ_{i+1}>, where Z_i is the Pauli Z matrix at site i.
 
@@ -705,11 +740,13 @@ class CT_quantum:
         for i in range(self.L):
             for zi in range(2):
                 for zj in range(2):
-                    idx_list=[slice(None)]*self.L_T
-                    idx_list[i],idx_list[(i+1)%self.L]=zi,zj
+                    # idx_list=[slice(None)]*self.L_T
+                    # idx_list[i],idx_list[(i+1)%self.L]=zi,zj
+                    inner_prod=self.inner_prob(vec, [i,(i+1)%self.L],[zi,zj])
                     exp=1-2*(zi^zj) # expectation-- zi^zj is xor of two bits which is only one when zi!=zj
-                    vec_i=vec[tuple(idx_list)].flatten()
-                    rs+=vec_i.conj()@vec_i*exp
+                    # vec_i=vec[tuple(idx_list)].flatten()
+                    # rs+=vec_i.conj()@vec_i*exp
+                    rs+=inner_prod*exp
         return -rs/self.L
     
     def Z_tensor(self,vec):
@@ -729,7 +766,7 @@ class CT_quantum:
             vec_tensor=vec.reshape((2,)*self.L_T)
         rs=0
         for i in range(self.L):
-            P0=self.inner_prob(vec_tensor,i)
+            P0=self.inner_prob(vec_tensor,pos=[i],n_list=[0])
             rs+=P0*1+(1-P0)*(-1)
         return rs/self.L
         
@@ -757,8 +794,8 @@ class CT_quantum:
             new_idx[mask_1+mask_2]=new_idx[mask_1+mask_2]^(0b10)
             ones=np.ones(2**(self.L-1))
             return sp.coo_matrix((ones,(new_idx,old_idx)),shape=(2**self.L,2**self.L))
-        if self.xj==set([0]):
-            return sp.eye(2**self.L)
+        if self.xj==set([0]) or self.xj==set([Fraction(1,3),Fraction(-1,3)]):
+            return sp.eye(2**self.L)        
         raise NotImplementedError(f"{self.xj} is not implemented")
 
 def dec2bin(x,L):
@@ -993,12 +1030,12 @@ class CT_tensor:
         dict of operatiors
             possible operators in the circuit
         """
-        return {("C",0):partial(self.control_map,n=0),
-                ("C",1):partial(self.control_map,n=1),
-                (f"P{self.L-1}",0):partial(self.projection_map,pos=self.L-1,n=0),
-                (f"P{self.L-1}",1):partial(self.projection_map,pos=self.L-1,n=1),
-                (f"P{self.L-2}",0):partial(self.projection_map,pos=self.L-2,n=0),
-                (f"P{self.L-2}",1):partial(self.projection_map,pos=self.L-2,n=1),
+        return {("C",0):partial(self.control_map,pos=[self.L-1],n=[0]),
+                ("C",1):partial(self.control_map,pos=[self.L-1],n=[1]),
+                (f"P{self.L-1}",0):partial(self.projection_map,pos=self.L-1,n=[0]),
+                (f"P{self.L-1}",1):partial(self.projection_map,pos=self.L-1,n=[1]),
+                (f"P{self.L-2}",0):partial(self.projection_map,pos=self.L-2,n=[0]),
+                (f"P{self.L-2}",1):partial(self.projection_map,pos=self.L-2,n=[1]),
                 ("B",):self.Bernoulli_map,
                 ("I",):lambda x:x
                 }
@@ -1425,7 +1462,7 @@ class CT_tensor:
         '''
         idx_list=[slice(None)]*vec.dim()
         idx_list[pos]=1-n
-        vec[idx_list]=0
+        vec[tuple(idx_list)]=0
 
     def T_tensor(self,vec,left=True):
         """Left or right shift the state vector `vec` in-place. This works both one and two ensemble indices.
@@ -1683,6 +1720,7 @@ class CT_tensor:
         dtype=torch.float64 if self.dtype['torch']==torch.complex128 else torch.float32
         state=torch.randn((2,)*(self.L+1)+(k,)+(ensemble,),device=self.device,dtype=dtype,generator=rng) # wf, re/im, k,ensemble
         state=torch.complex(state[:,0,:,:],state[:,1,:,:]) # wf, k, ensemble
+        
         norm=(torch.einsum(state[...,0,:].conj(),[...,0],state[...,0,:],[...,0],[0])) # ensemble
         state[...,0,:]/=torch.sqrt(norm)
         if k==2:

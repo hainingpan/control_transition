@@ -81,8 +81,8 @@ class CT_classical:
             else:
                 self.op_history=[op]
     def P(self,vec):
-        if self.xj==set([Fraction(1,3),Fraction(2,3)]) or self.xj==set([0]):
-            vec=vec&(~1)
+        if self.xj==set([Fraction(1,3),Fraction(2,3)]) or self.xj==set([0]) or self.xj==set([1]):
+            vec=vec&(~1) # set the last bit to 0
         else:
             if bin(self.leading&vec).count('1')%2==0:
                 vec=vec^1 # flip the last bit
@@ -117,6 +117,8 @@ class CT_classical:
                 vec=vec^2
         elif self.xj==set([0]) or self.xj==set([Fraction(1,3),Fraction(-1,3)]):
             pass
+        elif self.xj==set([1]):
+            vec+=(1<<(self.L-1))
         else:
             raise NotImplementedError(f"{self.xj} is not implemented")
         return vec
@@ -127,8 +129,10 @@ class CT_classical:
             vec=self.vec_history[-1]
         if self.xj== set([Fraction(1,3),Fraction(2,3)]):
             O=self.ZZ(vec)
-        elif self.xj == set([0]):
+        elif self.xj in set([0]):
             O=self.Z(vec)
+        elif self.xj in set([1]):
+            O=-self.Z(vec)
         elif self.xj== set([Fraction(1,3),Fraction(-1,3)]):
             O=self.ZZ(vec)
         return O
@@ -354,7 +358,7 @@ class CT_quantum:
         op_l=[]
         if self.rng_C.random()<=p_ctrl:
             # control map
-            if self.xj==set([Fraction(1,3),Fraction(2,3)]) or self.xj==set([0]):
+            if self.xj in [set([Fraction(1,3),Fraction(2,3)]),set([0]),set([1])]:
                 p_0=self.inner_prob(vec, pos=[self.L-1],n_list=[0])
                 op=('C',0) if self.rng.random()<=p_0 else ('C',1)
             elif self.xj==set([Fraction(1,3),Fraction(-1,3)]):
@@ -419,8 +423,10 @@ class CT_quantum:
             vec=self.vec_history[-1].copy()
         if self.xj== set([Fraction(1,3),Fraction(2,3)]) or self.xj==set([Fraction(1,3),Fraction(-1,3)]):
             O=self.ZZ_tensor(vec)
-        elif self.xj == set([0]):
+        elif self.xj ==set([0]):
             O=self.Z_tensor(vec)
+        elif self.xj ==set([1]):
+            O=-self.Z_tensor(vec)
         if self.debug:
             assert np.abs(O.imag)<self._eps, f'<O> is not real ({val}) '
         return O.real
@@ -710,7 +716,7 @@ class CT_quantum:
     
     def R_tensor(self,vec,n,pos):
         vec=self.P_tensor(vec,n,pos)
-        if self.xj==set([Fraction(1,3),Fraction(2,3)]) or self.xj==set([0]):
+        if self.xj in [set([Fraction(1,3),Fraction(2,3)]),set([0]),set([1])]:
             # projection on the last bits
             if n[0]==1:
                 vec=self.XL_tensor(vec)
@@ -762,11 +768,11 @@ class CT_quantum:
         float
             order parameter for ferromagnetic state
         """
-        if vec_tensor.ndim != (2,)*self.L_T:
-            vec_tensor=vec.reshape((2,)*self.L_T)
+        if vec.ndim != (2,)*self.L_T:
+            vec=vec.reshape((2,)*self.L_T)
         rs=0
         for i in range(self.L):
-            P0=self.inner_prob(vec_tensor,pos=[i],n_list=[0])
+            P0=self.inner_prob(vec,pos=[i],n_list=[0])
             rs+=P0*1+(1-P0)*(-1)
         return rs/self.L
         
@@ -794,8 +800,17 @@ class CT_quantum:
             new_idx[mask_1+mask_2]=new_idx[mask_1+mask_2]^(0b10)
             ones=np.ones(2**(self.L-1))
             return sp.coo_matrix((ones,(new_idx,old_idx)),shape=(2**self.L,2**self.L))
-        if self.xj==set([0]) or self.xj==set([Fraction(1,3),Fraction(-1,3)]):
-            return sp.eye(2**self.L)        
+        elif self.xj==set([0]) or self.xj==set([Fraction(1,3),Fraction(-1,3)]):
+            return sp.eye(2**self.L)   
+        elif self.xj == set([1]):
+            bin_1_2=dec2bin(Fraction(1,2), self.L)
+            int_1_2=int(''.join(map(str,bin_1_2)),2)
+            old_idx=np.arange(2**(self.L-1))
+            adder_idx=np.array([int_1_2]*2**(self.L-1))
+            new_idx=old_idx+adder_idx
+            ones=np.ones(2**(self.L-1))
+            return sp.coo_matrix((ones,(new_idx,old_idx)),shape=(2**self.L,2**self.L))
+
         raise NotImplementedError(f"{self.xj} is not implemented")
 
 def dec2bin(x,L):

@@ -58,7 +58,7 @@ if __name__=="__main__":
     if torch.cuda.is_available():
         print(torch.cuda.get_device_name(),flush=True)
     parser=argparse.ArgumentParser()
-    parser.add_argument('--es','-es',default=10,type=int,help='Ensemble size for circuit (default: 10).')
+    parser.add_argument('--es_C','-es_C',default=10,type=int,help='Ensemble size for circuit (default: 10).')
     parser.add_argument('--es_m','-es_m',default=10,type=int,help='Ensemble size for outcome (default: 10).')
     parser.add_argument('--seed','-seed',default=0,type=int,help='Random seed (default: 0).')
     parser.add_argument('--seed_C','-seed_C',default=0,type=int,help='Random seed_C (default: 0).')
@@ -78,7 +78,7 @@ if __name__=="__main__":
     p_ctrl_list=np.linspace(args.p_ctrl[0],args.p_ctrl[1],int(args.p_ctrl[2]))
     p_proj_list=np.linspace(args.p_proj[0],args.p_proj[1],int(args.p_proj[2]))
     st=time.time()
-    inputs=[(L,p_ctrl,p_proj,xj,args.complex128,args.seed,args.seed_C,args.ancilla,args.es,args.es_m) for L in L_list for p_ctrl in p_ctrl_list for p_proj in p_proj_list]
+    inputs=[(L,p_ctrl,p_proj,xj,args.complex128,args.seed,args.seed_C,args.ancilla,args.es_C,args.es_m) for L in L_list for p_ctrl in p_ctrl_list for p_proj in p_proj_list]
 
     # results=list(tqdm(map(run_tensor,inputs),total=len(inputs)))
     results=[]
@@ -94,12 +94,12 @@ if __name__=="__main__":
     results=torch.cat([torch.cat(tensors) for tensors in results])
 
 
-    rs=results.reshape((L_list.shape[0],p_ctrl_list.shape[0],p_proj_list.shape[0],3,args.es,args.es_m))
+    rs=results.reshape((L_list.shape[0],p_ctrl_list.shape[0],p_proj_list.shape[0],3,args.es_C,args.es_m))
     log_q_map,log_r_map,log_r__map=rs[:,:,:,0,:],rs[:,:,:,1,:],rs[:,:,:,2,:]
     save_dict={"log_q":log_q_map,"log_r":log_r_map,"log_r_":log_r__map,"args":args}
 
 
-    with open('CT_En{:d}_Enm{:d}_pctrl({:.2f},{:.2f},{:.0f})_pproj({:.2f},{:.2f},{:.0f})_L({:d},{:d},{:d})_xj({:s})_seed{:d}_seedC{:d}{:s}{:s}_XEB_Haar_encoding.pickle'.format(args.es,args.es_m,*args.p_ctrl,*args.p_proj,*args.L,args.xj.replace('/','-'),args.seed,args.seed_C,'_128' if args.complex128 else '_64','_anc'*args.ancilla),'wb') as f:
+    with open('CT_En{:d}_Enm{:d}_pctrl({:.2f},{:.2f},{:.0f})_pproj({:.2f},{:.2f},{:.0f})_L({:d},{:d},{:d})_xj({:s})_seed{:d}_seedC{:d}{:s}{:s}_XEB_Haar_encoding.pickle'.format(args.es_C,args.es_m,*args.p_ctrl,*args.p_proj,*args.L,args.xj.replace('/','-'),args.seed,args.seed_C,'_128' if args.complex128 else '_64','_anc'*args.ancilla),'wb') as f:
         pickle.dump(save_dict, f)
 
     print('Time elapsed: {:.4f}'.format(time.time()-st))

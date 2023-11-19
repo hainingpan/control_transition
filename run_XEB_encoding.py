@@ -1,4 +1,4 @@
-from CT_2 import *
+from CT import *
 import numpy as np
 import pickle
 import argparse
@@ -99,7 +99,7 @@ if __name__=="__main__":
     save_dict={"log_q":log_q_map,"log_r":log_r_map,"log_r_":log_r__map,"args":args}
 
 
-    with open('CT_En{:d}_Enm{:d}_pctrl({:.2f},{:.2f},{:.0f})_pproj({:.2f},{:.2f},{:.0f})_L({:d},{:d},{:d})_xj({:s})_seed{:d}_seedC{:d}{:s}{:s}_XEB_encoding.pickle'.format(args.es,args.es_m,*args.p_ctrl,*args.p_proj,*args.L,args.xj.replace('/','-'),args.seed,args.seed_C,'_128' if args.complex128 else '_64','_anc'*args.ancilla),'wb') as f:
+    with open('CT_En{:d}_Enm{:d}_pctrl({:.2f},{:.2f},{:.0f})_pproj({:.2f},{:.2f},{:.0f})_L({:d},{:d},{:d})_xj({:s})_seed{:d}_seedC{:d}{:s}{:s}_XEB_Haar_encoding.pickle'.format(args.es,args.es_m,*args.p_ctrl,*args.p_proj,*args.L,args.xj.replace('/','-'),args.seed,args.seed_C,'_128' if args.complex128 else '_64','_anc'*args.ancilla),'wb') as f:
         pickle.dump(save_dict, f)
 
     print('Time elapsed: {:.4f}'.format(time.time()-st))

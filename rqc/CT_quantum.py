@@ -655,8 +655,8 @@ class CT_quantum:
             return sp.coo_matrix((ones,(new_idx,old_idx)),shape=(2**self.L,2**self.L))
         elif self.xj == set([-1]):
             old_idx=np.arange(2**(self.L))
-            adder_idx=np.array([self.add_x]*2**self.L)
-            new_idx=(old_idx+adder_idx)%2**self.L
+            # adder_idx=np.array([self.add_x]*2**self.L)
+            new_idx=(old_idx+self.add_x)%2**self.L
             ones=np.ones(2**(self.L))
             return sp.coo_matrix((ones,(new_idx,old_idx)),shape=(2**self.L,2**self.L))
         else:

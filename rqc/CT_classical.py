@@ -3,7 +3,7 @@ from .utils import dec2bin
 from fractions import Fraction
 import numpy as np
 class CT_classical:
-    def __init__(self,L,store_vec=False,store_op=False,seed=None,seed_vec=None,seed_C=None,x0=None,xj=set([Fraction(1,3),Fraction(2,3)]),random=True):
+    def __init__(self,L,store_vec=False,store_op=False,seed=None,seed_vec=None,seed_C=None,x0=None,xj=set([Fraction(1,3),Fraction(2,3)]),random=True,feedback=True,add_x=False):
         '''
         use int to represent the state vector, the float number is int/2**L
         if classical is False: save using an array of 2^L
@@ -26,12 +26,15 @@ class CT_classical:
         self.vec_history=[self.vec]
         self.random=random  # if true, scrambler is random, else, use fixed mapping `self.scrambler`
         self.scrambler={7:1,6:4,5:0,4:3,3:2,2:5,1:6,0:7}
+        self.add_x=add_x
+        self.feedback=feedback
 
     def _initialize_binary(self,xj):
-        binary_xj={xj/2:dec2bin(xj/2,self.L) for xj in xj}
-        if Fraction(1,6) in binary_xj:
-            binary_xj[Fraction(1,6)]+=1
-        return binary_xj
+        if not self.xj in [set([0]),set([-1]),set([Fraction(1,3),Fraction(-1,3)])]:
+            binary_xj={xj/2:dec2bin(xj/2,self.L) for xj in xj}
+            if Fraction(1,6) in binary_xj:
+                binary_xj[Fraction(1,6)]+=1
+            return binary_xj
 
     def _initialize_vector(self):
         '''save using an array of L'''
@@ -79,12 +82,13 @@ class CT_classical:
                 self.op_history=[op]
 
     def P(self,vec):
-        if self.xj in [set([Fraction(1,3),Fraction(2,3)]),set([0]),set([1])]:
-            vec=vec&(~1) # set the last bit to 0
-            # pass
+        if self.xj in [set([Fraction(1,3),Fraction(2,3)]),set([0]),set([1]),set([-1])]:
+            if self.feedback:
+                vec=vec&(~1) # set the last bit to 0
         elif self.xj == set([Fraction(1,3),Fraction(-1,3)]):
-            if bin(self.leading&vec).count('1')%2==0:
-                vec=vec^1 # flip the last bit
+            if self.feedback:
+                if bin(self.leading&vec).count('1')%2==0:
+                    vec=vec^1 # flip the last bit
         return vec
 
     def T(self,vec,left=True):
@@ -112,7 +116,7 @@ class CT_classical:
             else:
                 # add 1/3
                 vec+=self.binary_xj[Fraction(1,3)]
-            # handle extra attractors, if 1..0x1, then 1..0(1-x)1, if 0..1x0, then 0..1(1-x)0 [shouldn't enter this branch..]
+            # handle extra attractors, if 1..0x1, then 1..0(1-x)1, if 0..1x0, then 0..1(1-x)0
             if vec&self.mask101 in [4,self.leading]:
                 # flip the second bit from the right
                 vec=vec^2
@@ -131,6 +135,9 @@ class CT_classical:
             #     vec&=self.allone
             vec+=(self.half)
             vec%=(1<<self.L)
+        elif self.xj==set([-1]):
+            vec+=self.add_x
+            vec%=(1<<self.L)
         else:
             raise NotImplementedError(f"{self.xj} is not implemented")
         return vec
@@ -141,9 +148,9 @@ class CT_classical:
             vec=self.vec_history[-1]
         if self.xj in [set([Fraction(1,3),Fraction(2,3)]),set([Fraction(1,3),Fraction(-1,3)])]:
             O=self.ZZ(vec)
-        elif self.xj in set([0]):
+        elif self.xj in [set([0]),set([-1])]:
             O=self.Z(vec)
-        elif self.xj in set([1]):
+        elif self.xj in [set([1])]:
             O=-self.Z(vec)
         return O
         

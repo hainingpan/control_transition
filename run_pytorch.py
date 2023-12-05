@@ -48,7 +48,7 @@ if __name__=="__main__":
     parser.add_argument('--xj','-xj',type=str,default="1/3,2/3", help="List of fractions or 0 in the format num1/denom1,num2/denom2,... or 0. For example: 1/2,2/3")
     parser.add_argument('--complex128','-complex128',action='store_true', help="add --complex128 to have precision of complex128")
     parser.add_argument('--ancilla','-ancilla',action='store_true', help="add --ancilla to have ancilla qubit")
-    parser.add_argument('--no_feedback','-no_feedback',action='store_false', help="add --no_feedback to remove feedback")
+    parser.add_argument('--no_feedback','-no_feedback',action='store_true', help="add --no_feedback to remove feedback")
     parser.add_argument('--add_x','-add_x',type=int,default=0, help="add x")
 
 

@@ -4,7 +4,7 @@ from fractions import Fraction
 from functools import partial, lru_cache
 import scipy.sparse as sp
 class CT_quantum:
-    def __init__(self,L,store_vec=False,store_op=False,store_prob=False,seed=None,seed_vec=None,seed_C=None,x0=None,xj=set([Fraction(1,3),Fraction(2,3)]),_eps=1e-10, ancilla=False,normalization=True,debug=False,monitor=False,feedback=True):
+    def __init__(self,L,store_vec=False,store_op=False,store_prob=False,seed=None,seed_vec=None,seed_C=None,x0=None,xj=set([Fraction(1,3),Fraction(2,3)]),_eps=1e-10, ancilla=False,normalization=True,debug=False,monitor=False,feedback=True,add_x=False):
         """Initialize the quantum circuit for the control transition (CT)
 
         Parameters
@@ -53,14 +53,15 @@ class CT_quantum:
         self.op_history=[] # store the history of operators applied to the circuit
         self.prob_history=[]  # store the history of each probability at projective measurement
         self.ancilla=ancilla
+        self.debug=debug
         self.vec=self._initialize_vector() # initialize the state vector
         self.vec_history=[self.vec] # store the history of state vector
         self._eps=_eps
         self.xj=set(xj)
         self.op_list=self._initialize_op() # initialize operators in the circuit
         self.normalization=normalization
-        self.debug=debug
         self.feedback=feedback   
+        self.add_x=add_x
         
     @monitor
     def _initialize_vector(self):
@@ -198,7 +199,7 @@ class CT_quantum:
         op_l=[]
         if self.rng_C.random()<=p_ctrl:
             # control map
-            if self.xj in [set([Fraction(1,3),Fraction(2,3)]),set([0]),set([1])]:
+            if self.xj in [set([Fraction(1,3),Fraction(2,3)]),set([0]),set([1]),set([-1])]:
                 p_0=self.inner_prob(vec, pos=[self.L-1],n_list=[0])
                 op=('C',0) if self.rng.random()<=p_0 else ('C',1)
             elif self.xj==set([Fraction(1,3),Fraction(-1,3)]):
@@ -263,10 +264,12 @@ class CT_quantum:
             vec=self.vec_history[-1].copy()
         if self.xj in [set([Fraction(1,3),Fraction(2,3)]),set([Fraction(1,3),Fraction(-1,3)])]:
             O=self.ZZ_tensor(vec)
-        elif self.xj ==set([0]):
+        elif self.xj in [set([0]),set([-1])]:
             O=self.Z_tensor(vec)
         elif self.xj ==set([1]):
             O=-self.Z_tensor(vec)
+        else:
+            raise NotImplementedError(f"Order parameter of {self.xj} is not implemented")
         if self.debug:
             assert np.abs(O.imag)<self._eps, f'<O> is not real ({val}) '
         return O.real
@@ -531,7 +534,7 @@ class CT_quantum:
     @monitor
     def R_tensor(self,vec,n,pos):
         vec=self.P_tensor(vec,n,pos)
-        if self.xj in [set([Fraction(1,3),Fraction(2,3)]),set([0]),set([1])]:
+        if self.xj in [set([Fraction(1,3),Fraction(2,3)]),set([0]),set([1]),set([-1])]:
             # projection on the last bits
             if n[0]==1:
                 if self.feedback:
@@ -540,6 +543,8 @@ class CT_quantum:
             if n[0]^n[1]==0:
                 if self.feedback:
                     vec=self.XL_tensor(vec)
+        else:
+            raise NotImplementedError(f"Reset of {self.xj} is not implemented")
         if self.normalization:
             vec=self.normalize(vec)
         return vec
@@ -648,5 +653,11 @@ class CT_quantum:
             else:
                 raise NotImplementedError("Non-feedback is not implemented for xj=1")
             return sp.coo_matrix((ones,(new_idx,old_idx)),shape=(2**self.L,2**self.L))
-
-        raise NotImplementedError(f"{self.xj} is not implemented")
+        elif self.xj == set([-1]):
+            old_idx=np.arange(2**(self.L))
+            adder_idx=np.array([self.add_x]*2**self.L)
+            new_idx=(old_idx+adder_idx)%2**self.L
+            ones=np.ones(2**(self.L))
+            return sp.coo_matrix((ones,(new_idx,old_idx)),shape=(2**self.L,2**self.L))
+        else:
+            raise NotImplementedError(f"{self.xj} is not implemented")

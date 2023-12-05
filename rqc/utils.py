@@ -1,18 +1,22 @@
-
-def monitor(func):
+def monitor(func,):
     def wrapper(self, *args, **kwargs):
-        # Call the original function
+        
         result = func(self, *args, **kwargs)
-        # Check if monitoring is enabled
-        if self.monitor:
-            # Call the monitoring function with the result
-            if not hasattr(self, 'EE_history'):
-                # self.EE_history=[self.von_Neumann_entropy_pure([self.L],vec=result)]
-                self.EE_history=[self.half_system_entanglement_entropy(vec=result)]
+        if self.monitor is not False and func.__name__ in self.monitor['op']:
+            if 'args' not in self.monitor:
+                self.monitor['args']={}
+            if self.monitor['metric'] == 'SA':
+                delta=self.von_Neumann_entropy_pure([self.L],vec=result,**self.monitor['args'])
+            elif self.monitor['metric'] == 'EE':
+                delta=self.half_system_entanglement_entropy(vec=result,**self.monitor['args'])
+            elif self.monitor['metric'] == 'TMI':
+                delta=self.tripartite_mutual_information(vec=result,subregion_A=range(self.L//4),subregion_B=range(self.L//4,self.L//4*2),subregion_C=range(self.L//4*2,self.L//4*3),**self.monitor['args'])
             else:
-                # self.EE_history.append(self.von_Neumann_entropy_pure([self.L],vec=result))
-                self.EE_history.append(self.half_system_entanglement_entropy(vec=result))
-        # Return the original result
+                raise ValueError(f'Invalid monitor {self.monitor}')
+            if not hasattr(self, 'EE_history'):
+                self.EE_history=[delta]
+            else:
+                self.EE_history.append(delta)
         return result
     return wrapper
 

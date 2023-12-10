@@ -1,10 +1,11 @@
  
 import numpy as np
+from .utils import dec2bin
 from fractions import Fraction
 from functools import partial
 import torch
 class CT_tensor:
-    def __init__(self,L,store_vec=False,store_op=False,store_prob=False,seed=None,seed_vec=None,seed_C=None,xj=set([Fraction(1,3),Fraction(2,3)]),_eps=1e-10, ancilla=False,gpu=False,complex128=True,ensemble=None,ensemble_m=1,debug=False,add_x=0,feedback=True):
+    def __init__(self,L,store_vec=False,store_op=False,store_prob=False,seed=None,seed_vec=None,seed_C=None,x0=None,xj=set([Fraction(1,3),Fraction(2,3)]),_eps=1e-10, ancilla=False,gpu=False,complex128=True,ensemble=None,ensemble_m=1,debug=False,add_x=0,feedback=True):
         """Initialize the quantum circuit for control transition and measurement induced transition using PyTorch. The tensor is saved as (0,1,...L-1, ancilla, ensemble, ensemble_m), where `ensemble` is for the ensemble size of the circuit (position of projection and control) and `ensemble_m` is for the ensemble size of outcome within a same circuit. 
         Numpy rng mode: If `seed` is a list, this corresponds to the single state vector simulation defined in `CT_quantum`. Numpy rng generator are used, the ensemble size is the same as `len(seed)`, `ensemble` should be None.
         PyTorch rng mode: when `seed_vec` and `seed_C` are not `None`, and `seed` is a number. `seed` will apply to initial state vec, and circuit. In this case, ensemble size is simply the total number of random samples with different circuit, and `ensemble_m` is 1 (by default). When `seed_vec` and `seed_C` and `seed` are all not None. `ensemble` and `ensemble_m` controls the number of different circuit and number of outcome in each circuit.
@@ -57,7 +58,7 @@ class CT_tensor:
         self.rng=self._initialize_random_seed(seed)
         self.rng_vec=self._initialize_random_seed(seed_vec) if seed_vec is not None else self.rng
         self.rng_C=self._initialize_random_seed(seed_C) if seed_C is not None else self.rng
-
+        self.x0=x0
         self.op_history=[]  
         self.prob_history=[]  
         self.ancilla=ancilla
@@ -125,17 +126,22 @@ class CT_tensor:
         """
         k=1 if not self.ancilla else 2
         factor=np.sqrt(1/k)
-        if self.ensemble is None:
-            from .utils import Haar_state
-            vec=factor*torch.from_numpy(np.array([Haar_state(self.L,ensemble=1,rng=rng,k=k).astype(self.dtype['numpy']).reshape((2,)*(self.L_T)) for rng in self.rng_vec])).permute(list(range(1,self.L_T+1))+[0]).unsqueeze(-1)
-            if self.gpu:
-                vec=vec.cuda()
+        if self.x0 is None:
+            if self.ensemble is None:
+                from .utils import Haar_state
+                vec=factor*torch.from_numpy(np.array([Haar_state(self.L,ensemble=1,rng=rng,k=k).astype(self.dtype['numpy']).reshape((2,)*(self.L_T)) for rng in self.rng_vec])).permute(list(range(1,self.L_T+1))+[0]).unsqueeze(-1)
+                if self.gpu:
+                    vec=vec.cuda()
+            else:
+                # Though verbose, but optimize for GPU RAM usage, squeeze() tends to reserve huge memory
+                vec=factor*self.Haar_state(k=k,ensemble=self.ensemble,rng=self.rng_vec)
+                if k == 1:
+                    vec=vec[...,0,:]
+                vec=vec.unsqueeze(-1).repeat(*(1,)*self.L_T+(1,self.ensemble_m,))
         else:
-            # Though verbose, but optimize for GPU RAM usage, squeeze() tends to reserve huge memory
-            vec=factor*self.Haar_state(k=k,ensemble=self.ensemble,rng=self.rng_vec)
-            if k == 1:
-                vec=vec[...,0,:]
-            vec=vec.unsqueeze(-1).repeat(*(1,)*self.L_T+(1,self.ensemble_m,))
+            vec=torch.zeros((2,)*(self.L_T)+(self.ensemble,self.ensemble_m,),device=self.device,dtype=self.dtype['torch'])
+            vec_int=dec2bin(self.x0,self.L)
+            vec[tuple(int(i) for i in bin(vec_int)[2:].zfill(self.L))+(slice(None),slice(None))]=1
         return vec
     
     def _initialize_op(self):

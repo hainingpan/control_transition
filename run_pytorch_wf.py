@@ -20,21 +20,40 @@ def convert_to_fraction(fraction_str):
             fractions.append(int(item))
     return fractions
 
+from functools import lru_cache
+@lru_cache(maxsize=None)
+def convert_bitstring_to_dw(L,ZZ=False):
+    # The distance of the leftmost "1" to the right
+    dw=[]
+    for bitstring in range(2**L):
+        pos=L-1
+        if ZZ:
+            bitstring=~(bitstring^(bitstring>>1))
+            pos-=1
+        while pos>-1 and bitstring&(1<<pos)==0:
+            pos-=1
+        dw.append(pos+1)
+    dw=torch.tensor(dw,device='cuda',dtype=torch.float32).reshape((2,)*L)
+    return dw
+
+
 def run_tensor(inputs,datasets,metric_datasets):
+
     (L_idx,L),(p_ctrl_idx,p_ctrl),(p_proj_idx,p_proj),xj,complex128,seed,ancilla,ensemble,save_T,x0=inputs
     ct=CT_tensor(L=L,seed=seed,xj=xj,gpu=True,complex128=complex128,_eps=1e-5,ensemble=ensemble,ancilla=ancilla,x0=x0)
     T_max=ct.L**2//2 if ancilla else 2*ct.L**2
     idx=0
+    dw=convert_bitstring_to_dw(L,ZZ=False if 0 in xj else True)
     if save_T:
-        vec_np = ct.vec.cpu().numpy()
-        datasets[L][p_ctrl_idx,p_proj_idx,idx]=vec_np
+        datasets[L][p_ctrl_idx,p_proj_idx,idx]=torch.einsum(torch.abs(ct.vec)**2,[...,0,1],dw,[...],[0,1]).cpu().numpy()
         idx+=1
     for t_idx in range(T_max):
         ct.random_control(p_ctrl=p_ctrl,p_proj=p_proj)
-        if save_T or t_idx==T_max-1:
-            vec_np = ct.vec.cpu().numpy()
-            datasets[L][p_ctrl_idx,p_proj_idx,idx]=vec_np
+        if save_T:
+            datasets[L][p_ctrl_idx,p_proj_idx,idx]=torch.einsum(torch.abs(ct.vec)**2,[...,0,1],dw,[...],[0,1]).cpu().numpy()
             idx+=1
+        elif t_idx==T_max-1:    
+            datasets[L][p_ctrl_idx,p_proj_idx,idx]=ct.vec.cpu().numpy()
         torch.cuda.empty_cache()
 
     if not ancilla:
@@ -78,10 +97,13 @@ if __name__=="__main__":
     inputs=[((L_idx,L),(p_ctrl_idx,p_ctrl),(p_proj_idx,p_proj),xj,args.complex128,args.seed,args.ancilla,args.es,args.save_T,args.x0) for L_idx,L in enumerate(L_list) for p_ctrl_idx,p_ctrl in enumerate(p_ctrl_list) for p_proj_idx,p_proj in enumerate(p_proj_list)]
 
     with h5py.File('CT_En{:d}_pctrl({:.2f},{:.2f},{:.0f})_pproj({:.2f},{:.2f},{:.0f})_L({:d},{:d},{:d})_xj({:s})_seed{:d}{:s}{:s}_wf{:s}.hdf5'.format(args.es,*args.p_ctrl,*args.p_proj,*args.L,args.xj.replace('/','-'),args.seed,'_128' if args.complex128 else '_64','_anc'*args.ancilla,'_T'*args.save_T),'w') as f:
-        
-        datasets={L:f.create_dataset(f'wf_{L}',((len(p_ctrl_list),len(p_proj_list),2*L**2+1 if args.save_T else 1)+(2,)*L+(args.es,1)),dtype=complex) for L in L_list}
+        if args.save_T:
+            # Save only first domain wall (as a function of time)
+            datasets={L:f.create_dataset(f'FDW_{L}',((len(p_ctrl_list),len(p_proj_list),2*L**2+1)+(args.es,1)),dtype=float) for L in L_list}
+        else:
+            # Save only wavefunction (at the end of time evolution)
+            datasets={L:f.create_dataset(f'wf_{L}',((len(p_ctrl_list),len(p_proj_list),1)+(2,)*L+(args.es,1)),dtype=complex) for L in L_list}
         metric_datasets={metric:f.create_dataset(f'{metric}',((len(p_ctrl_list),len(p_proj_list),len(L_list),args.es,1)),dtype=float) for metric in ['O','EE','TMI']}
-        print('SS'*10)
         for param in tqdm(inputs):
             result=run_tensor(param,datasets,metric_datasets)
             del result

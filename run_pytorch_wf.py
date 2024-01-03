@@ -36,6 +36,12 @@ def convert_bitstring_to_dw(L,ZZ=False):
     dw=torch.tensor(dw,device='cuda',dtype=torch.float32).reshape((2,)*L)
     return dw
 
+def convert_x0(xj,L):
+    if xj == [Fraction(1,3),Fraction(2,3)]:
+        return Fraction(((int(Fraction(1,3)*(2<<(L//2-1)))<<(L//2))+((1-(L//2%2))<<(L//2-1))),2**L)
+    elif xj==[0]:
+        return Fraction(1<<(L//2-1),1<<L)
+    
 
 def run_tensor(inputs,datasets,metric_datasets):
 
@@ -45,12 +51,14 @@ def run_tensor(inputs,datasets,metric_datasets):
     idx=0
     dw=convert_bitstring_to_dw(L,ZZ=False if 0 in xj else True)
     if save_T:
-        datasets[L][p_ctrl_idx,p_proj_idx,idx]=torch.einsum(torch.abs(ct.vec)**2,[...,0,1],dw,[...],[0,1]).cpu().numpy()
+        datasets[L][p_ctrl_idx,p_proj_idx,idx,0]=torch.einsum(torch.abs(ct.vec)**2,[...,0,1],dw,[...],[0,1]).cpu().numpy()
+        datasets[L][p_ctrl_idx,p_proj_idx,idx,1]=torch.einsum(torch.abs(ct.vec)**2,[...,0,1],dw**2,[...],[0,1]).cpu().numpy()
         idx+=1
     for t_idx in range(T_max):
         ct.random_control(p_ctrl=p_ctrl,p_proj=p_proj)
         if save_T:
-            datasets[L][p_ctrl_idx,p_proj_idx,idx]=torch.einsum(torch.abs(ct.vec)**2,[...,0,1],dw,[...],[0,1]).cpu().numpy()
+            datasets[L][p_ctrl_idx,p_proj_idx,idx,0]=torch.einsum(torch.abs(ct.vec)**2,[...,0,1],dw,[...],[0,1]).cpu().numpy()
+            datasets[L][p_ctrl_idx,p_proj_idx,idx,1]=torch.einsum(torch.abs(ct.vec)**2,[...,0,1],dw**2,[...],[0,1]).cpu().numpy()
             idx+=1
         elif t_idx==T_max-1:    
             datasets[L][p_ctrl_idx,p_proj_idx,idx]=ct.vec.cpu().numpy()
@@ -80,7 +88,7 @@ if __name__=="__main__":
     parser.add_argument('--p_proj','-p_proj',type=float,nargs=3,default=[0,1,1],help='Parameters for p_proj in the form [start, stop, num] to generate values with np.linspace (default: [0, 1, 11]).')
     parser.add_argument('--L','-L',type=int,nargs=3,default=[10,12,2],help='Parameters for L in the form [start, stop, step] to generate values with np.arange (default: [10, 16, 2]).')
     parser.add_argument('--xj','-xj',type=str,default="1/3,2/3", help="List of fractions or 0 in the format num1/denom1,num2/denom2,... or 0. For example: 1/2,2/3")
-    parser.add_argument('--x0','-x0',type=float,default=None, help="Initial value in fraction")
+    parser.add_argument('--x0','-x0',type=float,default=None, help="Initial value in fraction. Using -1 for the initial value of the first domain wall right in the middle of the chain.")
     parser.add_argument('--complex128','-complex128',action='store_true', help="add --complex128 to have precision of complex128")
     parser.add_argument('--ancilla','-ancilla',action='store_true', help="add --ancilla to have ancilla qubit")
     parser.add_argument('--save_T','-save_T',action='store_true', help="add --save to save the time evolution of the wavefunction")
@@ -88,18 +96,19 @@ if __name__=="__main__":
     args=parser.parse_args()
 
     xj = convert_to_fraction(args.xj)
+    print(xj)
 
     L_list=np.arange(args.L[0],args.L[1],args.L[2])
 
     p_ctrl_list=np.linspace(args.p_ctrl[0],args.p_ctrl[1],int(args.p_ctrl[2]))
     p_proj_list=np.linspace(args.p_proj[0],args.p_proj[1],int(args.p_proj[2]))
     st=time.time()
-    inputs=[((L_idx,L),(p_ctrl_idx,p_ctrl),(p_proj_idx,p_proj),xj,args.complex128,args.seed,args.ancilla,args.es,args.save_T,args.x0) for L_idx,L in enumerate(L_list) for p_ctrl_idx,p_ctrl in enumerate(p_ctrl_list) for p_proj_idx,p_proj in enumerate(p_proj_list)]
+    inputs=[((L_idx,L),(p_ctrl_idx,p_ctrl),(p_proj_idx,p_proj),xj,args.complex128,args.seed,args.ancilla,args.es,args.save_T,convert_x0(xj,L) if args.x0 == -1 else args.x0) for L_idx,L in enumerate(L_list) for p_ctrl_idx,p_ctrl in enumerate(p_ctrl_list) for p_proj_idx,p_proj in enumerate(p_proj_list)]
 
     with h5py.File('CT_En{:d}_pctrl({:.2f},{:.2f},{:.0f})_pproj({:.2f},{:.2f},{:.0f})_L({:d},{:d},{:d})_xj({:s})_seed{:d}{:s}{:s}_wf{:s}.hdf5'.format(args.es,*args.p_ctrl,*args.p_proj,*args.L,args.xj.replace('/','-'),args.seed,'_128' if args.complex128 else '_64','_anc'*args.ancilla,'_T'*args.save_T),'w') as f:
         if args.save_T:
-            # Save only first domain wall (as a function of time)
-            datasets={L:f.create_dataset(f'FDW_{L}',((len(p_ctrl_list),len(p_proj_list),2*L**2+1)+(args.es,1)),dtype=float) for L in L_list}
+            # Save only first domain wall and it's square (as a function of time)
+            datasets={L:f.create_dataset(f'FDW_{L}',((len(p_ctrl_list),len(p_proj_list),2*L**2+1,2)+(args.es,1)),dtype=float) for L in L_list}
         else:
             # Save only wavefunction (at the end of time evolution)
             datasets={L:f.create_dataset(f'wf_{L}',((len(p_ctrl_list),len(p_proj_list),1)+(2,)*L+(args.es,1)),dtype=complex) for L in L_list}

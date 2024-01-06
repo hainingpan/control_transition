@@ -22,7 +22,7 @@ if __name__=="__main__":
     parser.add_argument('--seed','-seed',default=0,type=int,help='random seed')
 
     args=parser.parse_args()
-    results=run_bl((args.L,args.p,2**args.L*args.nu/args.de,args.seed))
+    results=run_bl((args.L,args.p,int(2**args.L*args.nu/args.de),args.seed))
     
     with open(f'bricklayer_adder_({args.nu}-{args.de})_L{args.L}_p{args.p:.2f}_s{args.seed}.pickle','wb') as f:
         pickle.dump({'EE':results[0],'TMI':results[1],'args':args},f)

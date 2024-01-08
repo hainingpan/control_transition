@@ -4,7 +4,7 @@ from fractions import Fraction
 from functools import partial, lru_cache
 import scipy.sparse as sp
 class CT_quantum:
-    def __init__(self,L,store_vec=False,store_op=False,store_prob=False,seed=None,seed_vec=None,seed_C=None,x0=None,xj=set([Fraction(1,3),Fraction(2,3)]),_eps=1e-10, ancilla=False,normalization=True,debug=False,monitor=False,feedback=True,add_x=False):
+    def __init__(self,L,store_vec=False,store_op=False,store_prob=False,seed=None,seed_vec=None,seed_C=None,x0=None,xj=set([Fraction(1,3),Fraction(2,3)]),_eps=1e-10, ancilla=False,normalization=True,debug=False,monitor=False,feedback=True,add_x=False,fixed_point=[]):
         """Initialize the quantum circuit for the control transition (CT)
 
         Parameters
@@ -62,6 +62,7 @@ class CT_quantum:
         self.normalization=normalization
         self.feedback=feedback   
         self.add_x=add_x
+        self.fixed_point=fixed_point
         
     @monitor
     def _initialize_vector(self):
@@ -182,10 +183,8 @@ class CT_quantum:
         vec=self.op_list[('B',)](vec)
         self.update_history(vec,('B',),None)
 
-
     def random_control(self,p_ctrl,p_proj):
         """The competition between chaotic random unitary, control map and projection, where the projection can only be applied after the unitary. The probability of control is `p_ctrl`, and the probability of projection is `p_proj`.
-        This is the same protocol as `random_control_2`, the only difference is the way to generate rng, and document operators.
 
         Parameters
         ----------
@@ -264,10 +263,12 @@ class CT_quantum:
             vec=self.vec_history[-1].copy()
         if self.xj in [set([Fraction(1,3),Fraction(2,3)]),set([Fraction(1,3),Fraction(-1,3)])]:
             O=self.ZZ_tensor(vec)
-        elif self.xj in [set([0]),set([-1])]:
+        elif self.xj in [set([0]),]:
             O=self.Z_tensor(vec)
         elif self.xj ==set([1]):
             O=-self.Z_tensor(vec)
+        elif self.xj in [set([-1])]:
+            O=self.overlap(vec)
         else:
             raise NotImplementedError(f"Order parameter of {self.xj} is not implemented")
         if self.debug:
@@ -598,12 +599,23 @@ class CT_quantum:
             rs+=P0*1+(1-P0)*(-1)
         return rs/self.L
 
+    def overlap(self,vec):
+        """Calculate the overlap between the state vector `vec` and the fixed point. The fixed point is the state vector with all 1s, encoded in integer
+        """
+        if vec.ndim >1 :
+            vec=vec.flatten()
+        return np.sum(np.abs(vec[self.fixed_point])**2).real
+
     @monitor
     def adder_cpu(self,vec):
         if not self.ancilla:
             vec=self.adder()@vec
         else:
             vec=(self.adder()@vec.reshape((2**self.L,2))).flatten()
+        
+        if self.normalization and not self.feedback:
+            print(f'before {vec.conj()@vec}')
+            vec=self.normalize(vec)
         return vec
         
     @lru_cache(maxsize=None)

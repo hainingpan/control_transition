@@ -4,7 +4,7 @@ from .utils import U, Haar_state, dec2bin
 from functools import lru_cache
 
 class bricklayer:
-    def __init__(self,L,store_vec=False,store_op=False,store_prob=False,seed=None,seed_vec=None,seed_C=None,x0=None,_eps=1e-10,add_x=0,debug=False):
+    def __init__(self,L,store_vec=False,store_op=False,store_prob=False,seed=None,seed_vec=None,seed_C=None,x0=None,_eps=1e-10,add_x=0,debug=False,feedback=False):
         self.L=L
         self.store_vec=store_vec
         self.store_op=store_op
@@ -20,6 +20,7 @@ class bricklayer:
         self._eps=_eps
         self.add_x=add_x
         self.debug=debug
+        self.feedback=feedback
 
     def _initialize_vector(self):
         if self.x0 is not None:
@@ -49,16 +50,19 @@ class bricklayer:
         vec[tuple(idx_list)]=0
         return vec
 
-    def adder_cpu(self,vec):
+    def adder_cpu(self,vec,i=0):
         if vec.ndim >1 :
             vec=vec.flatten()
-        vec=self.adder()@vec
+        vec=self.adder(i)@vec
         return vec
 
     @lru_cache(maxsize=None)
-    def adder(self):
+    def adder(self,i):
         old_idx=np.arange(2**(self.L))
-        new_idx=(old_idx+self.add_x)%2**self.L
+        add_x_bin=bin(self.add_x)[2:].zfill(self.L)
+        add_x= int(add_x_bin[-i:]+add_x_bin[:-i],2)
+        print(add_x)
+        new_idx=(old_idx+add_x)%2**self.L
         ones=np.ones(2**(self.L))
         return sp.coo_matrix((ones,(new_idx,old_idx)),shape=(2**self.L,2**self.L))
     
@@ -86,6 +90,18 @@ class bricklayer:
         else:
             return vec
 
+    def R_tensor(self,vec,n,i):
+        vec=self.P_tensor(vec,n,i)
+        if self.feedback and n==1:
+            vec=self.X_tensor(vec,i)
+        return vec
+    
+    def X_tensor(self,vec,i):
+        if vec.ndim!=self.L:
+            vec=vec.reshape((2,)*self.L)
+        vec=np.roll(vec,1,axis=i)
+        return vec
+
     def U_layer(self,vec,even=True):
         '''apply one layers of U gates, even= True (2i,2i+1), False (2i+1,2i+2)'''
         idx=0 if even else 1
@@ -106,8 +122,24 @@ class bricklayer:
                 vec=self.normalize(vec)
         return vec
 
+    def C_layer(self,vec,p_proj):
+        ''' apply one layer of Control (C) gates, C=U R, where R is the measurement with feedback'''
+        for i in range(self.L):
+            if self.rng_C.random()<p_proj:
+                p_0=self.inner_prob(vec,i=i,n=0)
+                if self.rng.random()<p_0:
+                    vec=self.R_tensor(vec,n=0,i=i)
+                else:
+                    vec=self.R_tensor(vec,n=1,i=i)
+                vec=self.normalize(vec)
+
+                vec=self.adder_cpu(vec,i)
+
+        return vec
+
 
     def random_projection(self,p_proj):
+        ''' a global adder after a layer of projection'''
         vec=self.vec_history[-1].copy()
         vec=self.U_layer(vec,even=True)
         vec=self.P_layer(vec,p_proj)
@@ -115,6 +147,16 @@ class bricklayer:
         vec=self.U_layer(vec,even=False)
         vec=self.P_layer(vec,p_proj)
         self.update_history(vec,)
+
+    def random_projection_2(self,p_proj):
+        ''' an adder right after each projection'''
+        vec=self.vec_history[-1].copy()
+        vec=self.U_layer(vec,even=True)
+        vec=self.C_layer(vec,p_proj)
+        vec=self.U_layer(vec,even=False)
+        vec=self.C_layer(vec,p_proj)
+        self.update_history(vec,)
+
 
     def update_history(self,vec):
         if vec is not None:

@@ -61,7 +61,7 @@ class bricklayer:
         old_idx=np.arange(2**(self.L))
         add_x_bin=bin(self.add_x)[2:].zfill(self.L)
         add_x= int(add_x_bin[-i:]+add_x_bin[:-i],2)
-        print(add_x)
+        # print(add_x)
         new_idx=(old_idx+add_x)%2**self.L
         ones=np.ones(2**(self.L))
         return sp.coo_matrix((ones,(new_idx,old_idx)),shape=(2**self.L,2**self.L))

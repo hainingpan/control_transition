@@ -6,6 +6,7 @@ using Pkg
 Pkg.activate("CT")
 using CT
 using JSON
+using Printf
 
 using ArgParse
 using Serialization
@@ -63,7 +64,7 @@ function main()
     # open(filename, "w") do f
     #     serialize(f, Dict("O" => results[1], "EE" => results[2], "max_bond" => results[3],"args" => args))
     # end
-    filename = "MPS_(0,1)_L$(args["L"])_p$(round(args["p"], digits=2))_s$(args["seed"])_a$(args["ancilla"]).json"
+    filename = "MPS_(0,1)_L$(args["L"])_p$(@sprintf("%.3f", args["p"]))_s$(args["seed"])_a$(args["ancilla"]).json"
     data_to_serialize = Dict("O" => results[1], "EE" => results[2], "max_bond" => results[3], "args" => args)
     json_data = JSON.json(data_to_serialize)
     open(filename, "w") do f

@@ -367,7 +367,7 @@ function Z(ct::CT_MPS)
     if ct.debug
         println("Z are $(2 * sZ)")
     end
-    return sum(2 * sZ) / ct.L
+    return sum(sZ) / ct.L
 end
 
 function ZZ(ct::CT_MPS)

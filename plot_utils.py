@@ -402,4 +402,212 @@ def plot_line_inset(
         # plt.subplots_adjust(left=(.8)/fig.get_size_inches()[0],right=1-(.1)/fig.get_size_inches()[0],bottom=.5/fig.get_size_inches()[1],top=1-.2/fig.get_size_inches()[1])
         # fig.savefig(os.path.join(dirpath,filename),)
 
+from matplotlib.colors import LogNorm
+import torch
+import scipy
+import matplotlib.pyplot as plt
+class Optimizer:
+    def __init__(self,p_c,nu,df,params={'Metrics':'O',},p_range=[-0.1,0.1],Lmin=None,Lmax=None,bootstrap=False,gaussian_check=False):
+        
+        self.p_c=torch.tensor([p_c],requires_grad=False)
+        self.nu=torch.tensor([nu],requires_grad=False)
+        self.p_range=p_range
+        self.Lmin=0 if Lmin is None else Lmin
+        self.Lmax=100 if Lmax is None else Lmax
+        self.bootstrap=bootstrap
+        self.gaussian_check=gaussian_check
+        self.params=params
+        self.df=self.load_dataframe(df,params)
+        self.L_i,self.p_i,self.d_i,self.y_i = self.load_data()
 
+    
+    def load_dataframe(self,df,params):
+        df=df.xs(params.values(),level=list(params.keys()))['observations']
+        df=df[(df.index.get_level_values('p')<=self.p_c.item()+self.p_range[1]) & (self.p_c.item()+self.p_range[0]<=df.index.get_level_values('p'))]
+        df=df[(df.index.get_level_values('L')<=self.Lmax) & (self.Lmin<=df.index.get_level_values('L'))]
+        if self.bootstrap:
+            df=df.apply(lambda x: list(np.random.choice(x,size=len(x),replace=True)))
+        if self.gaussian_check:
+            print(df.apply(scipy.stats.shapiro))
+        return df
+    
+    def load_data(self):
+        L_i=torch.from_numpy(self.df.index.get_level_values('L').values)
+        p_i=torch.from_numpy(self.df.index.get_level_values('p').values)
+        d_i=torch.from_numpy(self.df.apply(np.std).values)/np.sqrt(self.df.apply(len).values)
+        y_i=torch.from_numpy(self.df.apply(np.mean).values)
+        assert p_i.unique().shape[0]>=4, f'not enough data points {p_i.unique().shape[0]}'
+        return L_i,p_i,d_i,y_i
+
+    def loss(self,p_c,nu,MLE=True):
+        x_i=(self.p_i-p_c)*(self.L_i)**(1/nu)
+        order=x_i.argsort()
+        x_i_ordered=x_i[order]
+        y_i_ordered=self.y_i[order]
+        d_i_ordered=self.d_i[order]
+        x={i:x_i_ordered[1+i:x_i_ordered.shape[0]-1+i] for i in [-1,0,1]}
+        d={i:d_i_ordered[1+i:d_i_ordered.shape[0]-1+i] for i in [-1,0,1]}
+        y={i:y_i_ordered[1+i:y_i_ordered.shape[0]-1+i] for i in [-1,0,1]}
+        x_post_ratio=(x[1]-x[0])/(x[1]-x[-1])
+        x_pre_ratio=(x[-1]-x[0])/(x[1]-x[-1])
+        y_var=d[0]**2+(x_post_ratio*d[-1])**2+(x_pre_ratio*d[1])**2
+        y_bar=x_post_ratio*y[-1]-x_pre_ratio*y[1]
+        # return torch.sum((y[0]-y_bar)**2/y_var)
+        if MLE:
+            return self.MLE(y[0],y_bar,y_var)
+        else:
+            return self.chi2(y[0],y_bar,y_var)
+    
+    def loss_shift(self,p_c,nu,omega,a,b,c,d,):
+        x_i=(self.p_i-p_c)*(self.L_i)**(1/nu)
+        y_var=self.d_i**2
+        self.y_i_fitted=a+b*x_i+c*x_i**2+d/self.L_i**omega
+        return self.chi2(self.y_i_fitted,self.y_i,y_var)
+
+    def chi2(self,y,y_fitted,sigma2):
+        return 0.5*torch.sum((y-y_fitted)**2/sigma2)
+    
+    def MLE(self,y,y_fitted,sigma2):
+        return 0.5*torch.sum((y-y_fitted)**2/sigma2)+0.5*torch.sum(torch.log(sigma2))
+
+    
+    def visualize(self,p_c_range,nu_range,trajectory=False,fig=True,ax=None,mapfunc=lambda x:x):
+        p_c_list=np.linspace(*p_c_range,82)
+        nu_list=np.linspace(*nu_range,80)
+        loss_map=np.array([[self.loss(torch.tensor([p_c]),torch.tensor([nu]),MLE=False).item() for p_c in p_c_list] for nu in nu_list])
+        if fig:
+            if ax is None:
+                fig, ax = plt.subplots()
+            cm=ax.contourf(p_c_list,nu_list,mapfunc(loss_map),levels=20)
+            ax.set_xlabel(r'$p_c$')
+            ax.set_ylabel(r'$\nu$')
+            plt.colorbar(cm)
+            if trajectory:
+                ax.scatter(self.p_c_history,self.nu_history,s=np.linspace(3,1,len(self.p_c_history))**2,)
+            ct=ax.contour(p_c_list,nu_list,mapfunc(loss_map),levels=[mapfunc(self.loss(self.p_c,self.nu,MLE=False).item()*1.3),],colors='k',linestyles='dashed')
+        else:
+            ct=plt.contour(p_c_list,nu_list,mapfunc(loss_map),levels=[mapfunc(self.loss(self.p_c,self.nu,MLE=False).item()*1.3),],colors='k',linestyles='dashed');
+        params_range=ct.collections[0].get_paths()[0].vertices
+        return params_range[:,0].min(),params_range[:,0].max(),params_range[:,1].min(),params_range[:,1].max()
+
+    def optimize(self,tolerance=1e-10):
+        p_c_prime = torch.tensor([torch.logit(self.p_c)],requires_grad=True)
+        nu_prime = torch.tensor([torch.log(self.nu)],requires_grad=True)
+        optimizer=torch.optim.Adam([p_c_prime,nu_prime],)
+        # optimizer=torch.optim.Adam([self.p_c,self.nu],)
+        prev_loss=float('inf')
+        current_loss=0
+        self.loss_history=[]
+        # self.p_c_history=[self.p_c.item()]
+        # self.nu_history=[self.nu.item()]
+        self.p_c_history=[torch.sigmoid(p_c_prime).item()]
+        self.nu_history=[torch.exp(nu_prime).item()]
+        iteration=0
+        while abs(prev_loss-current_loss)>tolerance and iteration<10000:
+            p_c_transformed = torch.sigmoid(p_c_prime)
+            nu_transformed = torch.exp(nu_prime)
+
+            loss_ = self.loss(p_c_transformed, nu_transformed,MLE=False)
+            # loss_=self.loss(self.p_c,self.nu)
+            optimizer.zero_grad()
+            loss_.backward()
+            optimizer.step()
+            prev_loss=current_loss
+            current_loss=loss_.item()
+            self.loss_history.append(current_loss)
+            self.p_c_history.append(p_c_transformed.item())
+            self.nu_history.append(nu_transformed.item())
+            # self.p_c_history.append(self.p_c.item())
+            # self.nu_history.append(self.nu.item())
+            iteration+=1
+        self.p_c = torch.sigmoid(p_c_prime)
+        self.nu = torch.exp(nu_prime)
+        Hessian= torch.tensor(torch.autograd.functional.hessian(self.loss,(self.p_c,self.nu)))
+        self.se=torch.sqrt(torch.diag(torch.inverse(Hessian)))
+        
+        return {'p_c':self.p_c.item(),'nu':self.nu.item(),'loss':current_loss*2/(self.y_i.shape[0]-2),'se':self.se.detach().numpy()}
+    def optimize_scipy(self):
+        func=lambda x: self.loss(torch.tensor([x[0]]),torch.tensor([x[1]]),MLE=False).item()
+        res=scipy.optimize.minimize(func,[self.p_c.item(),self.nu.item()],method='Nelder-Mead',bounds=[(0,1),(0,2)])
+        # res=scipy.optimize.minimize(func,[self.p_c.item(),self.nu.item()],method='L-BFGS-B',bounds=[(0,1),(0,5)])
+        # 'L-BFGS-B',bounds=[(0,1),(0,5)]
+        Hessian= torch.tensor(torch.autograd.functional.hessian(self.loss,(torch.tensor(res.x[0]),torch.tensor(res.x[1]))))
+        se=torch.sqrt(torch.diag(torch.inverse(Hessian)))
+        self.p_c=torch.tensor([res.x[0]])
+        self.nu=torch.tensor([res.x[1]])
+        return res,res.fun*2/(self.y_i.shape[0]-2),se
+
+    def optimize_shift(self,omega,a,b,c,d,tolerance=1e-10,):
+        p_c_prime = torch.tensor([torch.logit(self.p_c)],requires_grad=True)
+        nu_prime = torch.tensor([torch.log(self.nu)],requires_grad=True)
+        omega=torch.tensor([omega],requires_grad=True,dtype=torch.float32)
+        a=torch.tensor([a],requires_grad=True,dtype=torch.float32)
+        b=torch.tensor([b],requires_grad=True,dtype=torch.float32)
+        c=torch.tensor([c],requires_grad=True,dtype=torch.float32)
+        d=torch.tensor([d],requires_grad=True,dtype=torch.float32)
+        optimizer=torch.optim.Adam([p_c_prime,nu_prime,omega,a,b,c,d],)
+        prev_loss=float('inf')
+        current_loss=0
+        self.loss_history=[]
+        self.p_c_history=[torch.sigmoid(p_c_prime).item()]
+        self.nu_history=[torch.exp(nu_prime).item()]
+        iteration=0
+        while abs(prev_loss-current_loss)>tolerance and iteration<100000:
+            p_c_transformed = torch.sigmoid(p_c_prime)
+            nu_transformed = torch.exp(nu_prime)
+
+            loss_ = self.loss_shift(p_c_transformed, nu_transformed,omega,a,b,c,d)
+            optimizer.zero_grad()
+            loss_.backward()
+            optimizer.step()
+            prev_loss=current_loss
+            current_loss=loss_.item()
+            self.loss_history.append(current_loss)
+            self.p_c_history.append(p_c_transformed.item())
+            self.nu_history.append(nu_transformed.item())
+            iteration+=1
+        self.p_c = torch.sigmoid(p_c_prime)
+        self.nu = torch.exp(nu_prime)
+        return {'p_c':self.p_c.item(),'nu':self.nu.item(),'omega':omega.item(),'a':a.item(),'b':b.item(),'c':c.item(),'d':d.item(),'loss':current_loss,'chi-square_nu':current_loss*2/(self.y_i.shape[0]-7)}
+
+    def optimize_shift_scipy(self,omega,a,b,c,d):
+        # omega,a,b,c,d=
+        func=lambda x: self.loss_shift(*tuple(x),d=d).item()
+        res=scipy.optimize.minimize(func,[self.p_c.item(),self.nu.item(),omega,a,b,c],method='Nelder-Mead')
+        Hessian= torch.tensor(torch.autograd.functional.hessian(lambda x: self.loss_shift(*x),torch.tensor(res.x)))
+        se=torch.sqrt(torch.diag(torch.inverse(Hessian)))
+        self.p_c=torch.tensor([res.x[0]])
+        self.nu=torch.tensor([res.x[1]])
+        return res,res.fun*2/(self.y_i.shape[0]-7),se
+
+    def plot_loss(self):
+        if hasattr(self, 'loss_history'):
+            fig,ax=plt.subplots()
+            ax.plot(self.loss_history,'.-')
+            ax.set_xlabel('Iteration')
+            ax.set_ylabel('O')
+    
+    def plot_data_collapse(self,ax=None):
+        x_i=(self.p_i-self.p_c)*(self.L_i)**(1/self.nu)
+        # x_i=self.p_i
+        if ax is None:
+            fig,ax = plt.subplots()
+        L_list=self.df.index.get_level_values('L').unique().sort_values().values
+        idx_list=[0]+(np.cumsum([self.df.xs(key=L,level='L').shape[0] for L in L_list])).tolist()
+        L_dict={L:(start_idx,end_idx) for L,start_idx,end_idx in zip(L_list,idx_list[:-1],idx_list[1:])}
+        for L,(start_idx,end_idx) in L_dict.items():
+            ax.scatter(x_i.detach().numpy()[start_idx:end_idx],self.y_i.detach().numpy()[start_idx:end_idx],label=f'{L}')
+            # ax.plot(x_i.detach().numpy()[start_idx:end_idx],self.y_i_fitted.detach().numpy()[start_idx:end_idx],label=f'{L}')
+        ax.set_xlabel(r'$(p_i-p_c)L^{1/\nu}$')
+        ax.set_ylabel(r'$y_i$')
+        ax.legend()
+        ax.grid('on')
+        ax.set_title(rf'$p_c={self.p_c.item():.3f},\nu={self.nu.item():.3f}$')
+
+        # adder=self.df.index.get_level_values('adder').unique().tolist()[0]
+        # print(f'{self.params["Metrics"]}_Scaling_L({L_list[0]},{L_list[-1]})_adder({adder[0]}-{adder[1]}).png')
+        
+    
+    def plot_line(self):
+        fig,ax=plt.subplots()
+        ax.plot(self.p_i,self.y_i)

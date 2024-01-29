@@ -7,3 +7,5 @@
 *.log
 *.txt
 *.hdf5
+*.json
+*.sub

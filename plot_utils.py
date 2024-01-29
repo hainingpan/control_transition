@@ -1,6 +1,5 @@
 import os
 
-
 def load_json(fn):
     import json
     with open(fn, "r") as file:
@@ -9,12 +8,8 @@ def load_json(fn):
 
 def load_pickle(fn):
     import pickle
-    try:
-        with open(fn, 'rb') as f:
-            data = pickle.load(f)
-    except:
-        print(f'Error loading {fn}')
-
+    with open(fn, 'rb') as f:
+        data = pickle.load(f)
     return data
 
 def visualize_dataset(df,xlabel,ylabel,params={'Metrics':'EE',}):
@@ -24,10 +19,10 @@ def visualize_dataset(df,xlabel,ylabel,params={'Metrics':'EE',}):
     ----------
     df : DataFrame
         DataFrame to check
-    xlabel : String
-        String for the x-axis
-    ylabel : String
-        String for the y-axis
+    xlabel : str
+        str for the x-axis
+    ylabel : str
+        str for the y-axis
     params : dict, optional
         which metrics to look at, by default {'Metrics':'EE',}
     """    
@@ -51,7 +46,7 @@ def add_to_dict(data_dict,data,filename,fixed_params_keys={},skip_keys=set(['off
         Dictionary to be added to
     data : Dict
         Dictionary for a single entry
-    filename : String
+    filename : str
         Filename of the data
     """    
     import argparse
@@ -79,7 +74,7 @@ def convert_pd(data_dict,names):
     ----------
     data_dict : Dict
         Dictionary
-    names : List[String]
+    names : List[str]
         List of names for the MultiIndex, example: ['Metrics','adder', 'L', 'p']
 
     Returns
@@ -106,7 +101,6 @@ def generate_params(
     data_dict_file=None,
     fn_dir='auto',
     exist=False,
-    
 ):
     """Generate params to running and loading
 
@@ -116,25 +110,25 @@ def generate_params(
         Fixed parameters, example: {'nu':0,'de':1}
     vary_params : Dict of list
         Returns the cartesian product of the lists, example: {'L':[8,10],'p':[0,0.5,1]}
-    fn_template : String
+    fn_template : str
         Template of filename, example: 'MPS_({nu},{de})_L{L}_p{p:.3f}_s{s}_a{a}.json'
-    fn_dir_template : String
+    fn_dir_template : str
         Template of directory, example: 'MPS_{nu}-{de}'
-    input_params_template : String
+    input_params_template : str
         Template of input parameters, example: '{p:.3f} {L} {seed} {ancilla}'
     load_data : Function,
         the function to load data, currently `load_json` and `load_pickle` are supported
     filename : str, optional
         _description_, by default 'params.txt'
-    filelist : String, None, optional
+    filelist : str, None, optional
         If true, read the `filelist` as a list of existing files, by default None
     load : bool, optional
         Load files into data_dict, by default False
     data_dict : Dict, optional
         The Dictionary to load into, the format should be {'fn':{},...}, by default None
-    data_dict_file : String, optional
+    data_dict_file : str, optional
         The filename of the data_dict, if None, then use Dict provided by data_dict, else try to load file `data_dict_file`, if not exist, create a new Dict and save to disk, by default None
-    fn_dir : String, 'auto', optional
+    fn_dir : str, 'auto', optional
         The search directory, if 'auto', use the template provided by `fn_dir_template`, by default 'auto'
     exist : bool, optional
         If true, print , by default False
@@ -175,7 +169,11 @@ def generate_params(
         if load:
             if fn not in data_dict['fn']:
                 if os.path.exists(os.path.join(fn_dir,fn)):
-                    data=load_data(os.path.join(fn_dir,fn))
+                    try:
+                        data=load_data(os.path.join(fn_dir,fn))
+                    except:
+                        print(f'Error loading {fn}')
+                        continue
                     add_to_dict(data_dict,data,fn,fixed_params_keys=fixed_params.keys())
         else:
             if filelist is None:
@@ -201,5 +199,207 @@ def generate_params(
         return params_text
     
     
+import numpy as np
+def plot_line(
+    df,
+    x_name,
+    ax=None,
+    params={'Metrics':'O','p':0,},
+    L_list=None,
+    yscale=None,
+    ylim=None,
+    method=np.mean,
+    errorbar=False
+    ):
+    """Plot a single line"""
+    import matplotlib.pyplot as plt
+    from functools import partial
+    from scipy.stats import moment
 
+    if ax is None:
+        fig,ax=plt.subplots()
+    assert method in {np.mean,np.var}, f'the method should be either np.mean or np.var. {method} is not currently supported.'
+    # x_name='p'
+    # title_name=
+    op_str={np.mean:r'\overline',np.var:r'Var~'}
+    ylabel_name={'O':rf'${op_str[method]}{{\langle O \rangle}}$','EE':rf'${op_str[method]}{{ S_{{L/2}} }}$','TMI':rf'${op_str[method]}{{I_3}}$','SA':rf'${op_str[method]}{{ S_{{anc}} }}$','max_bond':rf'${op_str[method]}{{\chi}}$'}
+    df=df.xs(params.values(),level=list(params.keys()))
+    if L_list is None:
+        L_list=np.sort(df.index.get_level_values('L').unique())
+    colormap = (plt.cm.Blues(0.4+0.6*(i/L_list.shape[0])) for i in range(L_list.shape[0]))
+    for L in sorted(L_list):
+        dd=df.xs(key=L,level='L')['observations'].apply(method)
+        if errorbar:
+            if method is np.mean:
+                dd_se=df.xs(key=L,level='L')['observations'].apply(np.std).values/np.sqrt(df.xs(key=L,level='L')['observations'].apply(len).values)
+            if method is np.var:
+                mu4=df.xs(key=L,level='L')['observations'].apply(partial(moment,moment=4)).values
+                mu2=df.xs(key=L,level='L')['observations'].apply(partial(moment,moment=2)).values
+                n=(df.xs(key=L,level='L')['observations'].apply(len).values)
+                dd_se=np.sqrt((mu4-(n-3)/(n-1)*mu2**2)/n)
+                
+        x=dd.index.get_level_values(x_name)
+        arg_sort=x.argsort()
+        if yscale == 'log' and params['Metrics']== 'TMI':
+            dd_sort=np.abs(dd.values[arg_sort])
+            ylabel_name['TMI']=rf'${op_str[method]}{{|I_3|}}$'
+
+        else:
+            dd_sort=dd.values[arg_sort]
+        if errorbar:
+            ax.errorbar(x[arg_sort],dd_sort,yerr=dd_se[arg_sort],label=f'L={L}',lw=1,color=colormap.__next__(),capsize=2)
+        else:
+            ax.plot(x[arg_sort],dd_sort,'.-',label=f'L={L}',lw=1,color=colormap.__next__())
+    ax.legend()
+    if ylim is not None:
+        ax.set_ylim(ylim)
+    if yscale is not None:
+        ax.set_yscale(yscale)
+    ax.set_ylabel(ylabel_name[params['Metrics']])
+    ax.set_xlabel(x_name)
+    # ax.set_title(f'{title_name}={params[title_name]:.2f}')
+
+def plot_inset(
+    data,
+    ax,
+    xlim,
+    ylim,
+    ax_inset_pos,
+    L_list,
+    params,
+    yscale,
+    method,
+    x_name
+    ):
+    """Plot inset"""
+    import matplotlib.pyplot as plt
+    import matplotlib.patches as mpatches
     
+
+    # .27,.3
+    # .6,.63
+    axins = ax.inset_axes(ax_inset_pos,transform=ax.transAxes)
+    plot_line(data,params=params,ax=axins,L_list=L_list,yscale=yscale,method=method,x_name=x_name)
+    axins.grid('on')
+    axins.set_xlim(xlim)
+    axins.set_ylim(ylim)
+    axins.legend().remove()
+    axins.set_ylabel('')
+    axins.set_title('')
+    axins.set_xlabel('')
+    rect=mpatches.Rectangle((xlim[0],ylim[0]),xlim[1]-xlim[0],ylim[1]-ylim[0],ls='dashed',fill=None,lw=0.5,zorder=10)
+    ax.add_patch(rect)
+    if xlim[0]>=0.6*(ax_inset_pos[0]) and xlim[1]>=0.6*(ax_inset_pos[0]+ax_inset_pos[1]):
+        dashed_coord_1=(xlim[0],ylim[1])
+        inset_coord_1=(0,1)
+        dashed_coord_2=(xlim[1],ylim[0])
+        inset_coord_2=(1,0)
+    elif xlim[0]>=0.6*(ax_inset_pos[0]) and xlim[1]<0.6*(ax_inset_pos[0]+ax_inset_pos[1]):
+        dashed_coord_1=(xlim[0],ylim[1])
+        inset_coord_1=(0,1)
+        dashed_coord_2=(xlim[1],ylim[1])
+        inset_coord_2=(1,1)
+    elif xlim[0]<0.6*(ax_inset_pos[0]) and xlim[1]<0.6*(ax_inset_pos[0]+ax_inset_pos[1]):
+        dashed_coord_1=(xlim[0],ylim[0])
+        inset_coord_1=(0,0)
+        dashed_coord_2=(xlim[1],ylim[1])
+        inset_coord_2=(1,1)
+
+    line1=mpatches.ConnectionPatch(dashed_coord_1, inset_coord_1, coordsA='data',coordsB='axes fraction',axes=ax,axesB=axins,ls='dashed',lw=0.5)
+    ax.add_patch(line1)
+    line2=mpatches.ConnectionPatch(dashed_coord_2, inset_coord_2, coordsA='data',coordsB='axes fraction',axes=ax,axesB=axins,ls='dashed',lw=0.5)
+    ax.add_patch(line2)
+
+def plot_line_inset(
+    df_anc,
+    L_list,
+    xlim1,
+    xlim2,
+    ylim1,
+    ylim2,
+    ax_inset_pos1,
+    ax_inset_pos2,
+    metrics,
+    x_name='p',
+    fixed_params={},
+    inset1=False,
+    inset2=False,
+    yscale=None,
+    filename=None,
+    dirpath='Fig',
+    ylim=None,
+    errorbar=False,
+    method=np.mean,
+    filename_template='{metrics}_{method_name[method]}_L({L_list[0]},{L_list[-1]}){"_log" if yscale else ""}.png'
+    ):
+    """plot lines and inset
+
+    Parameters
+    ----------
+    df_anc : DataFrame
+        DataFrame to plot
+    L_list : np.array
+        List of L to plot, example: np.array([8,10,12])
+    xlim1 : List
+        xlim for inset1, example: [.28,.32]
+    xlim2 : List
+        xlim for inset2, example: [0.48,0.52]
+    ylim1 : List
+        ylim for inset1, example: [0.1,0.3]
+    ylim2 : List
+        ylim for inset2, example: [0.4,0.6]
+    ax_inset_pos1 : List
+        ax_inset_pos for inset1, example: [.13,.45,.4,.3]
+    ax_inset_pos2 : List
+        ax_inset_pos for inset2, example: [.1,.1,.3,.4]
+    metrics : str
+        which metrics to plot, example: 'EE'
+    x_name : str, optional
+        which x_name to plot, example: 'p'
+    fixed_params : dict, optional
+        other params which should be fixed in plotting, by default None
+    inset1 : bool, optional
+        whether to plot inset1, by default False
+    inset2 : bool, optional
+        whether to plot inset1, by default False
+    yscale : None, str, optional
+        If none, use linear scale; If `log`, use log scale for yaxis, by default None
+    filename : str, optional
+        If 'auto', use `filename_template` to generate filename, otherwise use `filename` itself, by default None
+    dirpath : str, optional
+        _description_, by default 'Fig'
+    ylim : List, optional
+        set ylim, by default None
+    errorbar : bool, optional
+        whether errorbar should show, by default False
+    method : func, optional
+        if method is `np.mean`, compute mean; if method is `np.var` compute variance, otherwise unsupported, by default np.mean
+    filename_template : str, optional
+        use f-string template to control the output, by default '{metrics}_{method_name[method]}_L({L_list[0]},{L_list[-1]}){"_log" if yscale else ""}.png'
+    """    
+    import matplotlib.pyplot as plt
+    fig,ax=plt.subplots(figsize=(6.8,
+    5))
+    params={'Metrics':metrics,}
+    params.update(fixed_params)
+    
+    plot_line(df_anc,params=params,ax=ax,L_list=L_list,yscale=yscale,ylim=ylim,errorbar=errorbar,method=method,x_name=x_name)
+    ax.grid('on')
+    ax.set_xlim(0,0.6)
+    if inset1:
+        plot_inset(df_anc,ax,xlim=xlim1,ylim=ylim1,ax_inset_pos=ax_inset_pos1,params=params,L_list=L_list,yscale=yscale,method=method,x_name=x_name)
+
+    if inset2:
+        plot_inset(df_anc,ax,xlim=xlim2,ylim=ylim2,ax_inset_pos=ax_inset_pos2,params=params,L_list=L_list,yscale=yscale,method=method,x_name=x_name)
+    
+    fstr= lambda template: eval(f"f'{template}'")
+
+    if filename is not None:
+        if filename== 'auto':
+            method_name={np.mean:'mean',np.var:'var'}
+            filename= eval(f"f'{filename_template}'", {},  locals())
+        print(filename)
+        # plt.subplots_adjust(left=(.8)/fig.get_size_inches()[0],right=1-(.1)/fig.get_size_inches()[0],bottom=.5/fig.get_size_inches()[1],top=1-.2/fig.get_size_inches()[1])
+        # fig.savefig(os.path.join(dirpath,filename),)
+
+

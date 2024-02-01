@@ -146,7 +146,7 @@ end
 
 """ apply scrambler (Haar random unitary) to site (i,i+1) [physical index]
 """
-function S!(ct::CT_MPS, i::Int, rng::Random.AbstractRNG)
+function S!(ct::CT_MPS, i::Int, rng::Random.AbstractRNG; builtin=false)
     # U=ITensor(1.)
     # U *= randomUnitary(linkind(mps,i), linkind(mps,i+1))
     # mps[i] *= U
@@ -157,7 +157,12 @@ function S!(ct::CT_MPS, i::Int, rng::Random.AbstractRNG)
         ram_idx = ct.phy_ram[[ct.phy_list[i], ct.phy_list[(i)%(ct.L)+1]]]
         U_4_tensor = ITensor(U_4, ct.qubit_site[ram_idx[1]], ct.qubit_site[ram_idx[2]], ct.qubit_site[ram_idx[1]]', ct.qubit_site[ram_idx[2]]')
         # return U_4_tensor
-        apply_op!(ct.mps, U_4_tensor,ct._cutoff)
+        if builtin
+            ct.mps=apply(U_4_tensor,ct.mps;cutoff=ct._cutoff)
+        else
+            apply_op!(ct.mps, U_4_tensor,ct._cutoff)
+        end
+
         if ct.debug
             println("U apply to $(i)")
         end
@@ -241,13 +246,12 @@ function von_Neumann_entropy(mps::MPS, i::Int)
 end
 
 function mps_to_tensor(mps; array=false, vector=false, column_first=true)
-    # Start with the first tensor
-    psi = mps[1]
+    # psi = mps[1]
+    # for i = 2:length(mps)
+    #     psi = psi * mps[i]
+    # end
 
-    # Sequentially contract the tensors
-    for i = 2:length(mps)
-        psi = psi * mps[i]
-    end
+    psi=prod(mps)
     # Convert the resulting tensor to a dense array
     if array
         psi = array(psi)
@@ -459,7 +463,7 @@ function max_bond_dim(mps::MPS)
 end
 
 
-greet() = print("Hello World! H")
+greet() = print("Hello World! How are 1?")
 
 
 end # module CT

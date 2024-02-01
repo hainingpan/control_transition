@@ -11,9 +11,9 @@ using Printf
 using ArgParse
 using Serialization
 
-function run(L::Int,p::Float64,seed::Int,ancilla::Int)
+function run(L::Int,p::Float64,seed::Int,ancilla::Int,maxdim::Int)
     
-    ct_f=CT.CT_MPS(L=L,seed=seed,folded=true,store_op=false,store_vec=false,ancilla=ancilla,debug=false,xj=Set([0]))
+    ct_f=CT.CT_MPS(L=L,seed=seed,folded=true,store_op=false,store_vec=false,ancilla=ancilla,debug=false,xj=Set([0]),_maxdim=maxdim)
     i=1
     T_max = ancilla ==0 ? 2*(ct_f.L^2) : div(ct_f.L^2,2)
 
@@ -51,6 +51,10 @@ function parse_my_args()
         arg_type = Int
         default = 0
         help = "number of ancilla"
+        "--maxdim", "-m"
+        arg_type = Int
+        default = 10
+        help = "set the maximal bond dim"
     end
     return parse_args(s)
 end
@@ -59,7 +63,7 @@ function main()
     println("Uses threads: ",BLAS.get_num_threads())
     println("Uses backends: ",BLAS.get_config())
     args = parse_my_args()
-    results = run(args["L"], args["p"], args["seed"],args["ancilla"])
+    results = run(args["L"], args["p"], args["seed"],args["ancilla"],args["maxdim"])
 
     # filename = "MPS_(0,1)_L$(args["L"])_p$(round(args["p"], digits=2))_s$(args["seed"]).jls"
     # open(filename, "w") do f

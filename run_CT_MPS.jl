@@ -3,9 +3,9 @@ using Random
 using LinearAlgebra
 using MKL
 using Pkg
+using JSON
 Pkg.activate("CT")
 using CT
-using JSON
 using Printf
 
 using ArgParse
@@ -25,10 +25,11 @@ function run(L::Int,p::Float64,seed::Int,ancilla::Int)
     max_bond= CT.max_bond_dim(ct_f.mps)
     if ancilla ==0 
         EE=CT.von_Neumann_entropy(ct_f.mps,div(ct_f.L,2))
+        return Dict("O" => O, "EE" => EE, "max_bond" => max_bond)
     else
-        EE=CT.von_Neumann_entropy(ct_f.mps,1)
+        SA=CT.von_Neumann_entropy(ct_f.mps,1)
+        return Dict("O" => O, "SA" => SA, "max_bond" => max_bond)
     end
-    return O, EE, max_bond
 end
 
 function parse_my_args()
@@ -65,7 +66,8 @@ function main()
     #     serialize(f, Dict("O" => results[1], "EE" => results[2], "max_bond" => results[3],"args" => args))
     # end
     filename = "MPS_(0,1)_L$(args["L"])_p$(@sprintf("%.3f", args["p"]))_s$(args["seed"])_a$(args["ancilla"]).json"
-    data_to_serialize = Dict("O" => results[1], "EE" => results[2], "max_bond" => results[3], "args" => args)
+    data_to_serialize = merge(results, Dict("args" => args))
+    # Dict("O" => results[1], "EE" => results[2], "max_bond" => results[3], "args" => args)
     json_data = JSON.json(data_to_serialize)
     open(filename, "w") do f
         write(f, json_data)
@@ -76,6 +78,7 @@ if isdefined(Main, :PROGRAM_FILE) && abspath(PROGRAM_FILE) == @__FILE__
     main()
 end
 
-# isdefined(Main, :PROGRAM_FILE) && abspath(PROGRAM_FILE) == @__FILE__ && main()
+
+
 
 # julia --sysimage ~/.julia/sysimages/sys_itensors.so run_CT_MPS.jl --p 1 --L 8 --seed 0 --ancilla 0

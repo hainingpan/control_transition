@@ -33,6 +33,7 @@ mutable struct CT_MPS
     mps::MPS
     vec_history::Vector{MPS}
     op_history::Vector{Vector{Any}}
+    adder::Vector{Union{MPO,Nothing}}
     debug::Bool
 end
 
@@ -42,7 +43,9 @@ function CT_MPS(; L::Int, store_vec::Bool=false, store_op::Bool=false, store_pro
     rng_C = seed_C === nothing ? rng : MersenneTwister(seed_C)
     qubit_site, ram_phy, phy_ram, phy_list = _initialize_basis(L,ancilla,folded)
     mps=_initialize_vector(L,ancilla,x0,folded,qubit_site,ram_phy,phy_ram,phy_list,rng_vec,_cutoff,_maxdim)
-    ct = CT_MPS(L, store_vec, store_op, store_prob, seed, seed_vec, seed_C, x0, xj, _eps, ancilla, folded, rng, rng_vec, rng_C, qubit_site, phy_ram, ram_phy, phy_list, _maxdim, _cutoff, mps, [],[],debug)
+    adder=[adder_MPO(i1,xj,qubit_site,L,phy_ram) for i1 in 1:L]
+    # adder=nothing
+    ct = CT_MPS(L, store_vec, store_op, store_prob, seed, seed_vec, seed_C, x0, xj, _eps, ancilla, folded, rng, rng_vec, rng_C, qubit_site, phy_ram, ram_phy, phy_list, _maxdim, _cutoff, mps, [],[],adder,debug)
     return ct
 end
 
@@ -171,25 +174,29 @@ function S!(ct::CT_MPS, i::Int, rng::Random.AbstractRNG; builtin=false)
     end
 end
 
-""" apply control_map to physical site i
+""" apply control_map to physical sites i
 """
 function control_map(ct::CT_MPS, n::Vector{Int}, i::Vector{Int})
     R!(ct, n, i)
-    # normalize!(mps)
-    # adder!(mps, n, i)
+    if ct.xj == Set([1 // 3, 2 // 3])
+        ct.mps=apply(ct.adder[i[1]],ct.mps;cutoff=ct._cutoff)
+        normalize!(ct.mps)
+        truncate!(ct.mps, cutoff=ct._cutoff)
+    end
 end
 
 """Rest: apply Projection to physical site list i with outcome list n, then reset to 1
 """
 function R!(ct::CT_MPS, n::Vector{Int}, i::Vector{Int})
     P!(ct, n, i)
-    if ct.xj in [Set([1 // 3, 2 // 3]),Set([0])]
+    if ct.xj in Set([Set([1 // 3, 2 // 3]),Set([0])])
         if n[1]==1
             X!(ct,i[end])
             # print("X")
         end
     elseif ct.xj in [Set([1 // 3, -1 // 3])]
         if n[1]^n[2]==0
+            print("i[end] needs to be checked")
             X!(ct,i[end])
         end
     end
@@ -285,7 +292,7 @@ function random_control!(ct::CT_MPS, i, p_ctrl, )
     p_0=-1.  # -1 for not applicable because of Bernoulli map
     if rand(ct.rng_C) < p_ctrl
         # control map
-        if ct.xj in [Set([1 // 3, 2 // 3]),Set([0])]
+        if ct.xj in Set([Set([1 // 3, 2 // 3]),Set([0])])
             p_0= inner_prob(ct, [0], [i])
             if ct.debug
                 println("Born prob for measuring 0 at phy site $i is $p_0")
@@ -353,12 +360,13 @@ function inner_prob(ct::CT_MPS, n::Vector{Int}, i::Vector{Int})
 end
 
 function order_parameter(ct::CT_MPS)
-    if ct.xj in [Set([1 // 2, 2 // 3])]
+    if ct.xj in Set([Set([1 // 3, 2 // 3])])
         O = ZZ(ct)
+        return real(O)
     elseif ct.xj in [Set([0])]
         O = Z(ct)
+        return real(scalar(O))
     end
-    return real(scalar(O))
 end
 
 function Zi(ct::CT_MPS)
@@ -396,7 +404,6 @@ function mps_element(mps::MPS, x::String)
     end
     return scalar(V)
 end
-
 
 
 function dec2bin(x::Real, L::Int)
@@ -461,8 +468,89 @@ function max_bond_dim(mps::MPS)
     end
     return max_dim
 end
+"""add one, i1 is the leading (physical) qubit"""
+function add1(i1::Int,L::Int,phy_ram::Vector{Int})
+    A1=OpSum()
+    A1+=tuple(([((i==phy_ram[i1]) ? "X" : "S+",i) for i in 1:L]...)...)
+    for j in 1:L-1
+        i_list=mod.(collect(j:L-1).+(i1-1),L).+1
+        A1+=tuple(([((i==phy_ram[i_list[1]]) ? "S-" : "S+",i) for i in i_list]...)...)
+    end
+    return A1
+end
 
+"""compute mpo^n
+convert n to binary rep, and then square it each step, if the binary bit is 1, add the current mpo to the sum
+the space overhead is O(2) forone n,
+time complexity is O(L): (L-2)+(L/2)'s multiplication for 1/6, and (L-1)+ (L/2)'s multiplication for 1/3
+"""
+function power_mpo(mpo::MPO,n_list::Vector{Int})
+    # mpo_sum=1
+    L=length(mpo)
+    n_list=mod.(n_list,2^L)
+    mpo_sum=fill(copy(mpo),length(n_list))
+    mpo_sum_visted=fill(false,L)
+    # print(n_list)
+    while sum(n_list)>0
+        for (n_idx,n) in enumerate(n_list)
+            if n%2==1
+                # println(n_idx,':',n," in ",n_list)
+                if !mpo_sum_visted[n_idx]
+                    mpo_sum_visted[n_idx]=true
+                    mpo_sum[n_idx]=mpo
+                else
+                    mpo_sum[n_idx]=apply(mpo_sum[n_idx],mpo)
+                end
+            end
+        end
+        mpo=apply(mpo,mpo)
+        n_list.>>=1
+    end
+    return mpo_sum
+end
 
+"""return the MPO for {1/6,1/3}"""
+function adder_MPO(i1::Int,xj::Set{Rational{Int}},qubit_site::Vector{Index{Int64}},L::Int,phy_ram::Vector{Int})
+    if xj == Set([1 // 3, 2 // 3])
+        add1_mpo=MPO(add1(i1,L,phy_ram),qubit_site)
+        # print(add1_mpo)
+        add1_6,add1_3=power_mpo(add1_mpo,[div(2^L,6)+1,div(2^L,3)])
+        i2=mod(i1,L)+1
+        add_condition=apply(add1_6,P_MPO([phy_ram[i2]],[0],qubit_site)) + apply(add1_3,P_MPO([phy_ram[i2]],[1],qubit_site))
+        iLm2=mod(i1+L-4,L)+1
+        iLm1=mod(i1+L-3,L)+1
+        iL=mod(i1+L-2,L)+1
+        P2=(P_MPO([phy_ram[i1],phy_ram[iLm2],phy_ram[iL]],[1,0,1],qubit_site)+P_MPO([phy_ram[i1],phy_ram[iLm2],phy_ram[iL]],[0,1,0],qubit_site))
+        XI=XI_MPO([phy_ram[iLm1]],qubit_site)
+
+        fix_spurs = apply(XI,P2) + I_MPO([phy_ram[iLm1]],qubit_site)
+        return apply(fix_spurs,add_condition)
+    else
+        return nothing
+    end
+end
+"""return the MPO for a joint projection at sites `pos_list` with outcome `n_list`"""
+function P_MPO(pos_list::Vector{Int},n_list::Vector{Int},qubit_site::Vector{Index{Int64}})
+    P_sum=OpSum()
+    P_sum+=tuple(([("Proj$n",pos) for (pos,n) in zip(pos_list,n_list)]...)...)
+    return MPO(P_sum,qubit_site)
+end
+
+"""return the oerpator of X-I at sites `pos_list`"""
+function XI_MPO(pos_list::Vector{Int},qubit_site::Vector{Index{Int64}})
+    X_sum=OpSum()
+    X_sum+=tuple(([("X",pos) for pos in pos_list]...)...)
+    X_sum+=tuple(([(-1,"I",pos) for pos in pos_list]...)...)
+    return MPO(X_sum,qubit_site)
+end
+
+function I_MPO(pos_list::Vector{Int},qubit_site::Vector{Index{Int64}})
+    I_sum=OpSum()
+    I_sum+=tuple(([("I",pos) for pos in pos_list]...)...)
+    return MPO(I_sum,qubit_site)
+end
+
+    
 greet() = print("Hello World! How are 1?")
 
 

@@ -43,7 +43,7 @@ function CT_MPS(; L::Int, store_vec::Bool=false, store_op::Bool=false, store_pro
     rng_C = seed_C === nothing ? rng : MersenneTwister(seed_C)
     qubit_site, ram_phy, phy_ram, phy_list = _initialize_basis(L,ancilla,folded)
     mps=_initialize_vector(L,ancilla,x0,folded,qubit_site,ram_phy,phy_ram,phy_list,rng_vec,_cutoff,_maxdim)
-    adder=[adder_MPO(i1,xj,qubit_site,L,phy_ram) for i1 in 1:L]
+    adder=[adder_MPO(i1,xj,qubit_site,L,phy_ram,phy_list) for i1 in 1:L]
     # adder=nothing
     ct = CT_MPS(L, store_vec, store_op, store_prob, seed, seed_vec, seed_C, x0, xj, _eps, ancilla, folded, rng, rng_vec, rng_C, qubit_site, phy_ram, ram_phy, phy_list, _maxdim, _cutoff, mps, [],[],adder,debug)
     return ct
@@ -68,7 +68,8 @@ function _initialize_basis(L,ancilla,folded)
         phy_ram[phy] = ram
     end
 
-    phy_list = Dict(0 => 1:L,1=>1:L)[ancilla]
+    # phy_list = Dict(0 => 1:L,1=>1:L)[ancilla]
+    phy_list = collect(1:L)
     return qubit_site, ram_phy, phy_ram, phy_list
 end
 
@@ -469,12 +470,13 @@ function max_bond_dim(mps::MPS)
     return max_dim
 end
 """add one, i1 is the leading (physical) qubit"""
-function add1(i1::Int,L::Int,phy_ram::Vector{Int})
+function add1(i1::Int,L::Int,phy_ram::Vector{Int},phy_list::Vector{Int})
     A1=OpSum()
-    A1+=tuple(([((i==phy_ram[i1]) ? "X" : "S+",i) for i in 1:L]...)...)
-    for j in 1:L-1
-        i_list=mod.(collect(j:L-1).+(i1-1),L).+1
-        A1+=tuple(([((i==phy_ram[i_list[1]]) ? "S-" : "S+",i) for i in i_list]...)...)
+    A1+=tuple(([((i==i1) ? "X" : "S+",phy_ram[phy_list[i]]) for i in 1:L]...)...)
+
+    for j in 2:L
+        i_list = phy_list[mod.(collect(j:L).+(i1-1).-1,L).+1]
+        A1+=tuple(([((i==i_list[1]) ? "S-" : "S+",phy_ram[i]) for i in i_list]...)...)
     end
     return A1
 end
@@ -509,18 +511,19 @@ function power_mpo(mpo::MPO,n_list::Vector{Int})
     return mpo_sum
 end
 
-"""return the MPO for {1/6,1/3}"""
-function adder_MPO(i1::Int,xj::Set{Rational{Int}},qubit_site::Vector{Index{Int64}},L::Int,phy_ram::Vector{Int})
+# Maybe it's not simply +1?
+"""return the MPO for {1/6,1/3}, here site indices are all physical indices"""
+function adder_MPO(i1::Int,xj::Set{Rational{Int}},qubit_site::Vector{Index{Int64}},L::Int,phy_ram::Vector{Int},phy_list::Vector{Int})
     if xj == Set([1 // 3, 2 // 3])
-        add1_mpo=MPO(add1(i1,L,phy_ram),qubit_site)
+        add1_mpo=MPO(add1(i1,L,phy_ram,phy_list),qubit_site)
         # print(add1_mpo)
         add1_6,add1_3=power_mpo(add1_mpo,[div(2^L,6)+1,div(2^L,3)])
-        i2=mod(i1,L)+1
+        i2=phy_list[mod(i1,L)+1]    # 2
         add_condition=apply(add1_6,P_MPO([phy_ram[i2]],[0],qubit_site)) + apply(add1_3,P_MPO([phy_ram[i2]],[1],qubit_site))
-        iLm2=mod(i1+L-4,L)+1
-        iLm1=mod(i1+L-3,L)+1
-        iL=mod(i1+L-2,L)+1
-        P2=(P_MPO([phy_ram[i1],phy_ram[iLm2],phy_ram[iL]],[1,0,1],qubit_site)+P_MPO([phy_ram[i1],phy_ram[iLm2],phy_ram[iL]],[0,1,0],qubit_site))
+        iLm2=phy_list[mod(i1+L-4,L)+1]  # L-2
+        iLm1=phy_list[mod(i1+L-3,L)+1 ]   # L-1
+        iL=phy_list[mod(i1+L-2,L)+1] # L i1+(L-1) -> L, (x-1)%L+1
+        P2=(P_MPO([phy_ram[i1],phy_ram[iLm2],phy_ram[iL]],[1,0,1],qubit_site)+P_MPO([phy_ram[i1],phy_ram[iLm2],phy_ram[iL]],[0,1,0],qubit_site))    # fix spurs
         XI=XI_MPO([phy_ram[iLm1]],qubit_site)
 
         fix_spurs = apply(XI,P2) + I_MPO([phy_ram[iLm1]],qubit_site)

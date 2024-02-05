@@ -366,7 +366,7 @@ function order_parameter(ct::CT_MPS)
         return real(O)
     elseif ct.xj in [Set([0])]
         O = Z(ct)
-        return real(scalar(O))
+        return real(O)
     end
 end
 

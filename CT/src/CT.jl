@@ -511,9 +511,8 @@ function power_mpo(mpo::MPO,n_list::Vector{Int})
     return mpo_sum
 end
 
-# Maybe it's not simply +1?
 """return the MPO for {1/6,1/3}, here site indices are all physical indices"""
-function adder_MPO(i1::Int,xj::Set{Rational{Int}},qubit_site::Vector{Index{Int64}},L::Int,phy_ram::Vector{Int},phy_list::Vector{Int})
+function adder_MPO(i1::Int,xj::Set,qubit_site::Vector{Index{Int64}},L::Int,phy_ram::Vector{Int},phy_list::Vector{Int})
     if xj == Set([1 // 3, 2 // 3])
         add1_mpo=MPO(add1(i1,L,phy_ram,phy_list),qubit_site)
         # print(add1_mpo)

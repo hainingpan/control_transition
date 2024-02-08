@@ -130,7 +130,7 @@ def generate_params(
     load : bool, optional
         Load files into data_dict, by default False
     data_dict : Dict, optional
-        The Dictionary to load into, the format should be {'fn':{},...}, by default None
+        The Dictionary to load into, the format should be {'fn':set(),...}, by default None
     data_dict_file : str, optional
         The filename of the data_dict, if None, then use Dict provided by data_dict, else try to load file `data_dict_file`, if not exist, create a new Dict and save to disk, by default None
     fn_dir : str, 'auto', optional
@@ -746,23 +746,24 @@ class Optimizer:
 from lmfit import minimize, Parameters
 class DataCollapse:
     """DataCollapse class, use scipy"""
-    def __init__(self,df,params={'Metrics':'O',},p_range=[-0.1,0.1],Lmin=None,Lmax=None):
+    def __init__(self,df,params={'Metrics':'O',},p_range=[-0.1,0.1],Lmin=None,Lmax=None,p_dim=1):
         self.p_range=p_range
         self.Lmin=0 if Lmin is None else Lmin
         self.Lmax=1000 if Lmax is None else Lmax
         self.params=params
-        self.df=self.load_dataframe(df,params)
+        self.p_='p' if p_dim==1 else ('p_ctrl' if 'p_proj' in params else 'p_proj')
+        self.df=self.load_dataframe(df,params,p_dim=p_dim)
         self.L_i,self.p_i,self.d_i,self.y_i = self.load_data()
     
-    def load_dataframe(self,df,params):
+    def load_dataframe(self,df,params,p_dim):
         df=df.xs(params.values(),level=list(params.keys()))['observations']
-        df=df[(df.index.get_level_values('p')<=self.p_range[1]) & (self.p_range[0]<=df.index.get_level_values('p'))]
+        df=df[(df.index.get_level_values(self.p_)<=self.p_range[1]) & (self.p_range[0]<=df.index.get_level_values(self.p_))]
         df=df[(df.index.get_level_values('L')<=self.Lmax) & (self.Lmin<=df.index.get_level_values('L'))]
-        return df
+        return df.sort_index(level=["L",self.p_])
 
     def load_data(self):
         L_i=(self.df.index.get_level_values('L').values)
-        p_i=(self.df.index.get_level_values('p').values)
+        p_i=(self.df.index.get_level_values(self.p_).values)
         d_i=(self.df.apply(np.std).values)/np.sqrt(self.df.apply(len).values)
         # d_i=(self.df.apply(np.std).values)
         y_i=(self.df.apply(np.mean).values)

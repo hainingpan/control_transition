@@ -51,8 +51,8 @@ def add_to_dict(data_dict,data,filename,fixed_params_keys={},skip_keys=set(['off
     """    
     import argparse
     data_dict['fn'].add(filename)
-    if 'EE' in data and 'SA' in data:
-        print(f'{filename} is problematic')
+
+    assert not ('EE' in data and 'SA' in data), f'{filename} is problematic'
 
     if 'args' in data:
         if isinstance(data['args'],argparse.Namespace):
@@ -62,15 +62,37 @@ def add_to_dict(data_dict,data,filename,fixed_params_keys={},skip_keys=set(['off
     else:
         raise ValueError(f'{filename} does not have args')
     
-    if 'offset' in iterator and iterator['offset']>0:
-        print(iterator)
+    # if 'offset' in iterator and iterator['offset']>0:
+    #     print(iterator)
 
-    for key in set(data.keys())-set(['args']):
-        params=(key,)+tuple(val for key,val in iterator.items() if key != 'seed' and key not in fixed_params_keys and key not in skip_keys)
-        if params in data_dict:
-            data_dict[params].append(data[key])
+    if filename.split('.')[-1] == 'pickle':
+        L_list=np.arange(*data['args'].L)
+        p_ctrl_list=np.round(np.linspace(data['args'].p_ctrl[0],data['args'].p_ctrl[1],int(data['args'].p_ctrl[2])),3)
+        p_proj_list=np.round(np.linspace(data['args'].p_proj[0],data['args'].p_proj[1],int(data['args'].p_proj[2])),3)
+        
+
+    for metric in set(data.keys())-set(['args']):
+        if filename.split('.')[-1] == 'pickle':
+            for L_idx,L in enumerate(L_list):
+                for p_ctrl_idx,p_ctrl in enumerate(p_ctrl_list):
+                    for p_proj_idx,p_proj in enumerate(p_proj_list):
+                        observations=data[metric][L_idx,p_ctrl_idx,p_proj_idx]
+                        if torch.is_tensor(observations):
+                            observations=observations.cpu().tolist()
+                            observations=[obs for obs in observations if not np.isnan(obs)]
+                        params=(metric,L,p_ctrl,p_proj)
+                        if params in data_dict:
+                            data_dict[params]=data_dict[params]+observations
+                        else:
+                            data_dict[params]=observations
         else:
-            data_dict[params]=[data[key]]
+            params=(metric,)+tuple(val for key,val in iterator.items() if key != 'seed' and key not in fixed_params_keys and key not in skip_keys)
+
+            if params in data_dict:
+                data_dict[params].append(data[metric])
+            else:
+                data_dict[params]=[data[metric]]
+
 
 def convert_pd(data_dict,names):
     """Convert the dictionary to a pandas dataframe
@@ -132,7 +154,7 @@ def generate_params(
     data_dict : Dict, optional
         The Dictionary to load into, the format should be {'fn':set(),...}, by default None
     data_dict_file : str, optional
-        The filename of the data_dict, if None, then use Dict provided by data_dict, else try to load file `data_dict_file`, if not exist, create a new Dict and save to disk, by default None
+        The filename of the cache file data_dict, if None, then use Dict provided by data_dict, else try to load file `data_dict_file`, if not exist, create a new Dict and save to disk, by default None
     fn_dir : str, 'auto', optional
         The search directory, if 'auto', use the template provided by `fn_dir_template`, by default 'auto'
     exist : bool, optional
@@ -151,15 +173,18 @@ def generate_params(
 
     params_text=[]
     if fn_dir=='auto':
-        fn_dir=fn_dir_template.format(**fixed_params)
+        # fn_dir=fn_dir_template.format(**fixed_params)
+        fn_dir=eval(f"f'{fn_dir_template}'", {},  {**locals(),**fixed_params,**vary_params})
+        # eval(f"f'{filename_template}'", {},  locals())
     
     inputs=product(*vary_params.values())
-    vary_params.values()
+    # vary_params.values()
     total=np.product([len(val) for val in vary_params.values()])
 
 
     if data_dict_file is not None:
-        data_dict_fn=os.path.join(fn_dir,data_dict_file.format(**fixed_params))
+        cache_fn=eval(f"f'{data_dict_file}'", {},  {**locals(),**fixed_params,**vary_params})
+        data_dict_fn=os.path.join(fn_dir,cache_fn)
         if os.path.exists(data_dict_fn):
             print(f'Loading data_dict {data_dict_fn}')
             with open(data_dict_fn,'rb') as f:
@@ -171,7 +196,8 @@ def generate_params(
     for input0 in tqdm(inputs,mininterval=1,desc='generate_params',total=total):
         dict_params={key:val for key,val in zip(vary_params.keys(),input0)}
         dict_params.update(fixed_params)
-        fn=fn_template.format(**dict_params)
+        # fn=fn_template.format(**dict_params)
+        fn=eval(f"f'{fn_template}'", {},  {**locals(),**dict_params})
 
         if load:
             if fn not in data_dict['fn']:
@@ -823,6 +849,7 @@ class DataCollapse:
         res=minimize(residual,params,**kwargs)
         self.p_c=res.params['p_c'].value
         self.nu=res.params['nu'].value
+        self.res=res
         return res
 
     def datacollapse_with_drift(self,m1,m2,n1,n2,p_c=None,nu=None,y=None,b1=None,b2=None,a=None,p_c_vary=True,nu_vary=True,y_vary=True,seed=None,**kwargs):
@@ -957,7 +984,7 @@ class DataCollapse:
         # print(f'{self.params["Metrics"]}_Scaling_L({L_list[0]},{L_list[-1]})_adder({adder[0]}-{adder[1]}).png')
 
 
-def grid_search(n1_list,n2_list,p_c,nu,y,**kwargs):
+def grid_search(n1_list,n2_list,p_c,nu,y,verbose=False,**kwargs):
     """grid search for the best n1 and n2
     provided arguments: 
     df=df_0_1
@@ -970,14 +997,18 @@ def grid_search(n1_list,n2_list,p_c,nu,y,**kwargs):
 
     n_list=[(n1,n2) for n1 in n1_list for n2 in n2_list]
     for (n1,n2) in (n_list):
-        # print(n1,n2)
+        if verbose:
+            print(n1,n2)
         dc=DataCollapse(**kwargs)
-        res0=dc.datacollapse_with_drift_GSL(n1=n1,n2=n2,p_c=p_c,nu=nu,y=y,)
+        try:
+            res0=dc.datacollapse_with_drift_GSL(n1=n1,n2=n2,p_c=p_c,nu=nu,y=y,)
+        except:
+            print(f'Fitting Failed for (n1={n1},n2={n2})')
         model_dict[(n1,n2)]=dc
         
     return model_dict
 
-def plot_chi2_ratio(model_dict):
+def plot_chi2_ratio(model_dict,L1=False):
     import matplotlib.pyplot as plt
     fig,ax=plt.subplots()
     color_list=['r','b','c','m','y','k','g']
@@ -991,7 +1022,7 @@ def plot_chi2_ratio(model_dict):
             n2_list.append(key[1])
 
     for n2 in n2_list:
-        ax.plot(n1_list,[model_dict[n1,n2].res.redchi for n1 in n1_list],label=f'$n_2$={n2}',color=color_list[n2])
+        ax.plot(n1_list,[(model_dict[n1,n2].res.redchi if hasattr(model_dict[n1,n2],"res") else np.nan) for n1 in n1_list],label=f'$n_2$={n2}',color=color_list[n2])
         
     ax.set_yscale('log')
     ax.axhline(1,color='k',ls='dotted',lw=0.5)
@@ -999,7 +1030,12 @@ def plot_chi2_ratio(model_dict):
 
     ax2=ax.twinx()
     for n2 in n2_list:
-        ax2.plot(n1_list,[np.abs(model_dict[n1,n2].y_i_irrelevant/model_dict[n1,n2].y_i_minus_irrelevant).mean() for n1 in n1_list],label=f'$n_2$={n2}',color=color_list[n2],ls='--')
+        if L1:
+            ratio=[np.abs(model_dict[n1,n2].y_i_irrelevant/model_dict[n1,n2].y_i_minus_irrelevant).mean() if hasattr(model_dict[n1,n2],"res") else np.nan for n1 in n1_list]
+        else:
+            ratio=[np.var(model_dict[n1,n2].y_i_irrelevant)/np.var(model_dict[n1,n2].y_i) if hasattr(model_dict[n1,n2],"res") else np.nan for n1 in n1_list]
+        ax2.plot(n1_list,ratio,label=f'$n_2$={n2}',color=color_list[n2],ls='--')
+        ax2.set_ylim([0,1.05])
 
     ax.set_xlabel('$n_1$')
     ax.set_ylabel(r'$\chi_{\nu}^2$')

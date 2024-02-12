@@ -217,7 +217,7 @@ def generate_params(
                 file_exist = fn in fn_list
             
             if not file_exist:
-                params_text.append(input_params_template.format(**dict_params))
+                params_text.append(eval(f"f'{input_params_template}'", {},  {**locals(),**dict_params}))
             elif exist:
                 params_text.append(fn)
     if load:
@@ -435,11 +435,6 @@ def plot_line_inset(
         # plt.subplots_adjust(left=(.8)/fig.get_size_inches()[0],right=1-(.1)/fig.get_size_inches()[0],bottom=.5/fig.get_size_inches()[1],top=1-.2/fig.get_size_inches()[1])
         # fig.savefig(os.path.join(dirpath,filename),)
 
-from matplotlib.colors import LogNorm
-import torch
-import scipy
-import matplotlib.pyplot as plt
-from matplotlib.colors import LogNorm
 import torch
 class Optimizer:
     def __init__(self,p_c,nu,df,params={'Metrics':'O',},p_range=[-0.1,0.1],Lmin=None,Lmax=None,bootstrap=False,gaussian_check=False):
@@ -456,6 +451,8 @@ class Optimizer:
 
     
     def load_dataframe(self,df,params):
+        import scipy
+
         df=df.xs(params.values(),level=list(params.keys()))['observations']
         df=df[(df.index.get_level_values('p')<=self.p_c.item()+self.p_range[1]) & (self.p_c.item()+self.p_range[0]<=df.index.get_level_values('p'))]
         df=df[(df.index.get_level_values('L')<=self.Lmax) & (self.Lmin<=df.index.get_level_values('L'))]
@@ -541,6 +538,9 @@ class Optimizer:
 
     
     def visualize(self,p_c_range,nu_range,trajectory=False,fig=True,ax=None,mapfunc=lambda x:x):
+        from matplotlib.colors import LogNorm
+        import matplotlib.pyplot as plt
+        from matplotlib.colors import LogNorm
         p_c_list=np.linspace(*p_c_range,82)
         nu_list=np.linspace(*nu_range,80)
         loss_map=np.array([[self.loss(torch.tensor([p_c]),torch.tensor([nu]),MLE=False).item() for p_c in p_c_list] for nu in nu_list])
@@ -599,6 +599,8 @@ class Optimizer:
 
     def optimize_scipy(self):
         """Optimize using scipy.minimize"""
+        import scipy
+
         func=lambda x: self.loss(torch.tensor([x[0]]),torch.tensor([x[1]]),MLE=False).item()
         res=scipy.optimize.minimize(func,[self.p_c.item(),self.nu.item()],method='Nelder-Mead',bounds=[(0,1),(0,2)])
         # res=scipy.optimize.minimize(func,[self.p_c.item(),self.nu.item()],method='L-BFGS-B',bounds=[(0,1),(0,5)])
@@ -646,6 +648,8 @@ class Optimizer:
     def optimize_drift_scipy(self,omega,a,b,c,d):
         """Optimize using scipy.minimize, using taylor expansion PHYS. REV. X 12, 041002 (2022)"""
         # omega,a,b,c,d=
+        import scipy
+
         func=lambda x: self.loss_drift(*tuple(x),d=d).item()
         res=scipy.optimize.minimize(func,[self.p_c.item(),self.nu.item(),omega,a,b,c],method='Nelder-Mead')
         Hessian= torch.tensor(torch.autograd.functional.hessian(lambda x: self.loss_drift(*x,d=d),torch.tensor(res.x)))
@@ -671,6 +675,8 @@ class Optimizer:
         return beta
     def optimize_drift_lsq(self,omega,n=2):
         """generalized version of PHYS. REV. X 12, 041002 (2022), to n-th order"""
+        import scipy
+
         def func(x):
             beta= self.linear_least_square(p_c=x[0],nu=x[1],omega=x[2],n=n)
             return self.loss_drift(p_c=x[0],nu=x[1],omega=x[2],beta=beta).item()
@@ -688,6 +694,8 @@ class Optimizer:
         TODO: the mixing of torch and numpy is messy, should use a clean version
 
         """ 
+        import scipy
+
         assert n1>0, 'n1 should be greater than 0'
 
         def func(x):
@@ -723,6 +731,7 @@ class Optimizer:
 
 
     def plot_loss(self):
+        import matplotlib.pyplot as plt
         if hasattr(self, 'loss_history'):
             fig,ax=plt.subplots()
             ax.plot(self.loss_history,'.-')
@@ -730,6 +739,9 @@ class Optimizer:
             ax.set_ylabel('O')
     
     def plot_data_collapse(self,ax=None,drift=False):
+        from matplotlib.colors import LogNorm
+        import matplotlib.pyplot as plt
+        from matplotlib.colors import LogNorm
         x_i=(self.p_i-self.p_c)*(self.L_i)**(1/self.nu)
         # x_i=self.p_i
         if ax is None:
@@ -766,12 +778,12 @@ class Optimizer:
         
     
     def plot_line(self):
+        import matplotlib.pyplot as plt
         fig,ax=plt.subplots()
         ax.plot(self.p_i,self.y_i)
 
-from lmfit import minimize, Parameters
 class DataCollapse:
-    """DataCollapse class, use scipy"""
+    """DataCollapse class, use lmfit"""
     def __init__(self,df,params={'Metrics':'O',},p_range=[-0.1,0.1],Lmin=None,Lmax=None,p_dim=1):
         self.p_range=p_range
         self.Lmin=0 if Lmin is None else Lmin
@@ -838,6 +850,7 @@ class DataCollapse:
     
     def datacollapse(self,p_c=None,nu=None,**kwargs):
         """data collapse without drift, x_i=(p_i-p_c)L^{1/nu}, and try to make x_i vs y_i collapse to a smooth line"""
+        from lmfit import minimize, Parameters
 
         params=Parameters()
         params.add('p_c',value=p_c,min=0,max=1)
@@ -853,6 +866,8 @@ class DataCollapse:
         return res
 
     def datacollapse_with_drift(self,m1,m2,n1,n2,p_c=None,nu=None,y=None,b1=None,b2=None,a=None,p_c_vary=True,nu_vary=True,y_vary=True,seed=None,**kwargs):
+        from lmfit import minimize, Parameters
+
         params=Parameters()
         params.add('p_c',value=p_c,min=0,max=1,vary=p_c_vary)
         params.add('nu',value=nu,min=0,max=2,vary=nu_vary)
@@ -909,6 +924,8 @@ class DataCollapse:
     
     def datacollapse_with_drift_GSL(self,n1,n2,p_c=None,nu=None,y=None,**kwargs):
         """fit the coefficient of the taylor expansion of the scaling function, using generalized least square"""
+        from lmfit import minimize, Parameters
+
         params=Parameters()
         params.add('p_c',value=p_c,min=0,max=1)
         params.add('nu',value=nu,min=0,max=2)

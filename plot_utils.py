@@ -952,6 +952,7 @@ class DataCollapse:
 
 
     def plot_data_collapse(self,ax=None,drift=False,driftcollapse=False):
+        import matplotlib.pyplot as plt
         x_i=(self.p_i-self.p_c)*(self.L_i)**(1/self.nu)
         # x_i=self.p_i
         if ax is None:
@@ -985,14 +986,17 @@ class DataCollapse:
         if drift:
             if not driftcollapse:
                 ax.set_xlabel(r'$p_i$')
-                ax.set_title(rf'$p_c={self.p_c:.3f},\nu={self.nu:.3f},y = {self.y:.3f}$')
+                # TODO: check whether errorbar exists before
+                ax.set_title(rf'$p_c$={self.p_c:.3f}$\pm${self.res.params["p_c"].stderr:.3f},$\nu$={self.nu:.3f}$\pm${self.res.params["nu"].stderr:.3f},$y$= {self.y:.3f}$\pm${self.res.params["y"].stderr:.3f}')
             else:
                 ax.set_xlabel(r'$x_i$')
-                ax.set_title(rf'$p_c={self.p_c:.3f},\nu={self.nu:.3f},y = {self.y:.3f}$')
+                ax.set_title(rf'$p_c$={self.p_c:.3f}$\pm${self.res.params["p_c"].stderr:.3f},$\nu$={self.nu:.3f}$\pm${self.res.params["nu"].stderr:.3f},$y$= {self.y:.3f}$\pm${self.res.params["y"].stderr:.3f}')
                 ax.set_ylabel(r'$y_i-y_{irre}$')
         else:
             ax.set_xlabel(r'$(p_i-p_c)L^{1/\nu}$')
-            ax.set_title(rf'$p_c={self.p_c:.3f},\nu={self.nu:.3f}$')
+            # ax.set_title(rf'$p_c={self.p_c:.3f},\nu={self.nu:.3f}$')
+            ax.set_title(rf'$p_c$={self.p_c:.3f}$\pm${self.res.params["p_c"].stderr:.3f},$\nu$={self.nu:.3f}$\pm${self.res.params["nu"].stderr:.3f}')
+
         
         ax.legend()
         ax.grid('on')
@@ -1026,6 +1030,7 @@ def grid_search(n1_list,n2_list,p_c,nu,y,verbose=False,**kwargs):
     return model_dict
 
 def plot_chi2_ratio(model_dict,L1=False):
+    """L1 means use L1 norm instead of variance"""
     import matplotlib.pyplot as plt
     fig,ax=plt.subplots()
     color_list=['r','b','c','m','y','k','g']
@@ -1039,10 +1044,11 @@ def plot_chi2_ratio(model_dict,L1=False):
             n2_list.append(key[1])
 
     for n2 in n2_list:
-        ax.plot(n1_list,[(model_dict[n1,n2].res.redchi if hasattr(model_dict[n1,n2],"res") else np.nan) for n1 in n1_list],label=f'$n_2$={n2}',color=color_list[n2])
+        ax.plot(n1_list,[(model_dict[n1,n2].res.redchi if hasattr(model_dict[n1,n2],"res") else np.nan) for n1 in n1_list],label=f'$n_2$={n2}',color=color_list[n2],marker='.')
         
     ax.set_yscale('log')
     ax.axhline(1,color='k',ls='dotted',lw=0.5)
+    ax.fill_between(n1_list,0.5,5,alpha=0.5,color='cyan')
     ax.legend()
 
     ax2=ax.twinx()
@@ -1050,8 +1056,18 @@ def plot_chi2_ratio(model_dict,L1=False):
         if L1:
             ratio=[np.abs(model_dict[n1,n2].y_i_irrelevant/model_dict[n1,n2].y_i_minus_irrelevant).mean() if hasattr(model_dict[n1,n2],"res") else np.nan for n1 in n1_list]
         else:
-            ratio=[np.var(model_dict[n1,n2].y_i_irrelevant)/np.var(model_dict[n1,n2].y_i) if hasattr(model_dict[n1,n2],"res") else np.nan for n1 in n1_list]
-        ax2.plot(n1_list,ratio,label=f'$n_2$={n2}',color=color_list[n2],ls='--')
+            # ratio=[np.var(model_dict[n1,n2].y_i_irrelevant)/np.var(model_dict[n1,n2].y_i) if hasattr(model_dict[n1,n2],"res") else np.nan for n1 in n1_list]
+            ratio=[]
+            for n1 in n1_list:
+                if hasattr(model_dict[n1,n2],"res"):
+                    y_i_irrelevant_mean=np.sum(model_dict[n1,n2].y_i_irrelevant/model_dict[n1,n2].d_i**2)/np.sum(1/model_dict[n1,n2].d_i**2)
+                    y_i_mean=np.sum(model_dict[n1,n2].y_i/model_dict[n1,n2].d_i**2)/np.sum(1/model_dict[n1,n2].d_i**2)
+                    ESS_irr=np.sum((model_dict[n1,n2].y_i_irrelevant-y_i_irrelevant_mean)**2/model_dict[n1,n2].d_i**2)
+                    TSS=np.sum((model_dict[n1,n2].y_i-y_i_mean)**2/model_dict[n1,n2].d_i**2)
+                    ratio.append(ESS_irr/TSS)
+                else:
+                    ratio.append(np.nan)
+        ax2.plot(n1_list,ratio,label=f'$n_2$={n2}',color=color_list[n2],ls='--',marker='.')
         ax2.set_ylim([0,1.05])
 
     ax.set_xlabel('$n_1$')

@@ -12,7 +12,7 @@ def load_pickle(fn):
         data = pickle.load(f)
     return data
 
-def visualize_dataset(df,xlabel,ylabel,params={'Metrics':'EE',}):
+def visualize_dataset(df,xlabel,ylabel,params={'Metrics':'EE',},**kwargs):
     """Visualize the ensemble size for two axis
 
     Parameters
@@ -32,7 +32,7 @@ def visualize_dataset(df,xlabel,ylabel,params={'Metrics':'EE',}):
     x=df.index.get_level_values(xlabel).values
     ensemblesize=df['observations'].apply(len).values
     fig,ax=plt.subplots()
-    cm=ax.scatter(x,y,100,ensemblesize,marker='s',cmap='inferno')
+    cm=ax.scatter(x,y,100,ensemblesize,marker='.',cmap='inferno',**kwargs)
     plt.colorbar(cm)
     ax.set_xlabel(xlabel)
     ax.set_ylabel(ylabel)
@@ -192,25 +192,25 @@ def generate_params(
         else:
             print(f'Creating new data_dict {data_dict_fn}')
             data_dict={'fn':set()}
-
+    all_fns=set(os.listdir(fn_dir))
     for input0 in tqdm(inputs,mininterval=1,desc='generate_params',total=total):
         dict_params={key:val for key,val in zip(vary_params.keys(),input0)}
         dict_params.update(fixed_params)
-        # fn=fn_template.format(**dict_params)
         fn=eval(f"f'{fn_template}'", {},  {**locals(),**dict_params})
 
         if load:
             if fn not in data_dict['fn']:
-                if os.path.exists(os.path.join(fn_dir,fn)):
+                fn_fullpath=os.path.join(fn_dir,fn)
+                if fn_fullpath in (all_fns):
                     try:
-                        data=load_data(os.path.join(fn_dir,fn))
+                        data=load_data(fn_fullpath)
                     except:
                         print(f'Error loading {fn}')
                         continue
                     add_to_dict(data_dict,data,fn,fixed_params_keys=fixed_params.keys())
         else:
             if filelist is None:
-                file_exist = os.path.exists(os.path.join(fn_dir,fn))
+                file_exist = os.path.join(fn_dir,fn) in all_fns
             else:
                 with open(filelist,'r') as f:
                     fn_list=f.read().split('\n')
@@ -1052,6 +1052,7 @@ def plot_chi2_ratio(model_dict,L1=False):
     ax.legend()
 
     ax2=ax.twinx()
+    
     for n2 in n2_list:
         if L1:
             ratio=[np.abs(model_dict[n1,n2].y_i_irrelevant/model_dict[n1,n2].y_i_minus_irrelevant).mean() if hasattr(model_dict[n1,n2],"res") else np.nan for n1 in n1_list]
@@ -1072,5 +1073,7 @@ def plot_chi2_ratio(model_dict,L1=False):
 
     ax.set_xlabel('$n_1$')
     ax.set_ylabel(r'$\chi_{\nu}^2$')
-    ax2.set_ylabel('mean(|irre/re|)')
+    ax2.set_ylabel('Irrelevant contribution')
+    ax2.fill_between(n1_list,0.,0.1,alpha=0.2,color='orange')
+
         

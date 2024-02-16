@@ -201,7 +201,7 @@ def generate_params(
         if load:
             if fn not in data_dict['fn']:
                 fn_fullpath=os.path.join(fn_dir,fn)
-                if fn_fullpath in (all_fns):
+                if fn in (all_fns):
                     try:
                         data=load_data(fn_fullpath)
                     except:

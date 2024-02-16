@@ -192,7 +192,16 @@ def generate_params(
         else:
             print(f'Creating new data_dict {data_dict_fn}')
             data_dict={'fn':set()}
-    all_fns=set(os.listdir(fn_dir))
+
+    if load:
+        all_fns=set(os.listdir(fn_dir))
+    else:
+        if filelist is None:
+            all_fns=set(os.listdir(fn_dir))
+        else:
+            with open(filelist,'r') as f:
+                all_fns=f.read().split('\n')
+
     for input0 in tqdm(inputs,mininterval=1,desc='generate_params',total=total):
         dict_params={key:val for key,val in zip(vary_params.keys(),input0)}
         dict_params.update(fixed_params)
@@ -212,9 +221,7 @@ def generate_params(
             if filelist is None:
                 file_exist = os.path.join(fn_dir,fn) in all_fns
             else:
-                with open(filelist,'r') as f:
-                    fn_list=f.read().split('\n')
-                file_exist = fn in fn_list
+                file_exist = fn in all_fns
             
             if not file_exist:
                 params_text.append(eval(f"f'{input_params_template}'", {},  {**locals(),**dict_params}))

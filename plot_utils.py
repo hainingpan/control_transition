@@ -239,7 +239,7 @@ def generate_params(
         return params_text
     
     
-
+import numpy as np
 def plot_line(
     df,
     x_name,
@@ -255,7 +255,7 @@ def plot_line(
     import matplotlib.pyplot as plt
     from functools import partial
     from scipy.stats import moment
-    import numpy as np
+    
 
     if ax is None:
         fig,ax=plt.subplots()

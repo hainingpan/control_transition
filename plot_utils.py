@@ -1025,10 +1025,11 @@ def grid_search(n1_list,n2_list,p_c,nu,y,verbose=False,**kwargs):
     p_range=[0.45,0.55]
     """
     # red_chi2_list=np.zeros((len(n1_list),len(n2_list)))
+    from tqdm import tqdm
     model_dict={}
 
     n_list=[(n1,n2) for n1 in n1_list for n2 in n2_list]
-    for (n1,n2) in (n_list):
+    for (n1,n2) in tqdm(n_list):
         if verbose:
             print(n1,n2)
         dc=DataCollapse(**kwargs)

@@ -376,7 +376,7 @@ class CT_tensor:
             raise NotImplementedError(f"Order parameter of {self.xj} is not implemented")
         return O  
 
-    def von_Neumann_entropy_pure(self,subregion,vec=None,driver='gesvd'):
+    def von_Neumann_entropy_pure(self,subregion,vec=None,driver='gesvd',n=1,threshold=None,sv=False):
         """Calculate the von Neumann entropy of a pure state, where the state vector is `vec` and the subregion is `subregion`. Using the Schmidt decomposition, the von Neumann entropy is -\sum_i \lambda_i^2 \log \lambda_i^2, where \lambda_i is the singular value of the reshaped state vector `vec`.
 
         Parameters
@@ -403,10 +403,24 @@ class CT_tensor:
         vec_=vec.contiguous().view((self.rng.shape[0] if self.ensemble is None else self.ensemble,self.ensemble_m,2**len(subregion),2**len(not_subregion)))
 
         S=torch.linalg.svdvals(vec_,driver=driver)
-        S_pos=torch.clamp(S,min=1e-18)
-        return torch.sum(-torch.log(S_pos**2)*S_pos**2,axis=-1)
+        if sv:
+            return S
 
-    def half_system_entanglement_entropy(self,vec=None,selfaverage=False):
+        S_pos=torch.clamp(S,min=1e-18)
+        S_pos2=S_pos**2
+        if n==1:
+            return torch.sum(-torch.log(S_pos2)*S_pos2,axis=-1)
+        elif n==0:
+            if threshold is None:
+                # this threshold may be too stringent.
+                threshold=torch.finfo(self.dtype['torch']).eps
+            return torch.log((S_pos2>threshold**2).sum(axis=-1))
+        elif n==np.inf:
+            return -torch.log(torch.max(S_pos2,axis=-1)[0])
+        else:
+            return torch.log((S_pos2**n).sum(axis=-1))/(1-n)
+
+    def half_system_entanglement_entropy(self,vec=None,selfaverage=False,n=1,threshold=None,sv=False):
         """Calculate the half-system entanglement entropy, where the state vector is `vec`. The half-system entanglement entropy is defined as \sum_{i=0..L/2-1}S_([i,i+L/2)) / (L/2), where S_([i,i+L/2)) is the von Neumann entropy of the subregion [i,i+L/2).
 
         Parameters
@@ -424,13 +438,13 @@ class CT_tensor:
         '''\sum_{i=0..L/2-1}S_([i,i+L/2)) / (L/2)'''
         if vec is None:
             vec=self.vec
-        if selfaverage:
-            S_A=torch.mean([self.von_Neumann_entropy_pure(np.arange(i,i+self.L//2),vec) for i in range(self.L//2)])
+        if selfaverage:x``
+            S_A=torch.mean([self.von_Neumann_entropy_pure(np.arange(i,i+self.L//2),vec,n=n,threshold=threshold) for i in range(self.L//2)])
         else:
-            S_A=self.von_Neumann_entropy_pure(np.arange(self.L//2),vec)
+            S_A=self.von_Neumann_entropy_pure(np.arange(self.L//2),vec,n=n,threshold=threshold,sv=sv)
         return S_A
 
-    def tripartite_mutual_information(self,subregion_A,subregion_B, subregion_C,selfaverage=False,vec=None):
+    def tripartite_mutual_information(self,subregion_A,subregion_B, subregion_C,selfaverage=False,vec=None,n=1,threshold=1e-10,sv=False):
         """Calculate tripartite entanglement entropy. The tripartite entanglement entropy is defined as S_A+S_B+S_C-S_AB-S_AC-S_BC+S_ABC, where S_A is the von Neumann entropy of subregion A, S_AB is the von Neumann entropy of subregion A and B, etc. The system size `L` should be a divided by 4 such that the subregion A, B and C are of the same size.
 
         Parameters
@@ -460,13 +474,16 @@ class CT_tensor:
         if selfaverage:
             return torch.mean([self.tripartite_mutual_information((subregion_A+shift)%self.L,(subregion_B+shift)%self.L,(subregion_C+shift)%self.L,selfaverage=False) for shift in range(len(subregion_A))])
         else:
-            S_A=self.von_Neumann_entropy_pure(subregion_A,vec=vec)
-            S_B=self.von_Neumann_entropy_pure(subregion_B,vec=vec)
-            S_C=self.von_Neumann_entropy_pure(subregion_C,vec=vec)
-            S_AB=self.von_Neumann_entropy_pure(np.concatenate([subregion_A,subregion_B]),vec=vec)
-            S_AC=self.von_Neumann_entropy_pure(np.concatenate([subregion_A,subregion_C]),vec=vec)
-            S_BC=self.von_Neumann_entropy_pure(np.concatenate([subregion_B,subregion_C]),vec=vec)
-            S_ABC=self.von_Neumann_entropy_pure(np.concatenate([subregion_A,subregion_B,subregion_C]),vec=vec)
+            S_A=self.von_Neumann_entropy_pure(subregion_A,vec=vec,n=n,threshold=threshold,sv=sv)
+            S_B=self.von_Neumann_entropy_pure(subregion_B,vec=vec,n=n,threshold=threshold,sv=sv)
+            S_C=self.von_Neumann_entropy_pure(subregion_C,vec=vec,n=n,threshold=threshold,sv=sv)
+            S_AB=self.von_Neumann_entropy_pure(np.concatenate([subregion_A,subregion_B]),vec=vec,n=n,threshold=threshold,sv=sv)
+            S_AC=self.von_Neumann_entropy_pure(np.concatenate([subregion_A,subregion_C]),vec=vec,n=n,threshold=threshold,sv=sv)
+            S_BC=self.von_Neumann_entropy_pure(np.concatenate([subregion_B,subregion_C]),vec=vec,n=n,threshold=threshold,sv=sv)
+            S_ABC=self.von_Neumann_entropy_pure(np.concatenate([subregion_A,subregion_B,subregion_C]),vec=vec,n=n,threshold=threshold,sv=sv)
+            if sv:
+                return {'S_A':S_A,'S_B':S_B,'S_C':S_C,'S_AB':S_AB,'S_AC':S_AC,'S_BC':S_BC,'S_ABC':S_ABC}
+            
             return S_A+ S_B + S_C-S_AB-S_AC-S_BC+S_ABC
     
     def update_history(self,vec=None,op=None,p=None):

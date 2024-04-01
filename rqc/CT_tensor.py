@@ -438,7 +438,7 @@ class CT_tensor:
         '''\sum_{i=0..L/2-1}S_([i,i+L/2)) / (L/2)'''
         if vec is None:
             vec=self.vec
-        if selfaverage:x``
+        if selfaverage:
             S_A=torch.mean([self.von_Neumann_entropy_pure(np.arange(i,i+self.L//2),vec,n=n,threshold=threshold) for i in range(self.L//2)])
         else:
             S_A=self.von_Neumann_entropy_pure(np.arange(self.L//2),vec,n=n,threshold=threshold,sv=sv)

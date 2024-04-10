@@ -1,11 +1,12 @@
  
 import numpy as np
+from .utils import U
 from .utils import dec2bin
 from fractions import Fraction
 from functools import partial
 import torch
 class CT_tensor:
-    def __init__(self,L,store_vec=False,store_op=False,store_prob=False,seed=None,seed_vec=None,seed_C=None,x0=None,xj=set([Fraction(1,3),Fraction(2,3)]),_eps=1e-10, ancilla=False,gpu=False,complex128=True,ensemble=None,ensemble_m=1,debug=False,add_x=0,feedback=True):
+    def __init__(self,L,store_vec=False,store_op=False,store_prob=False,seed=None,seed_vec=None,seed_C=None,x0=None,xj=frozenset([Fraction(1,3),Fraction(2,3)]),_eps=1e-10, ancilla=False,gpu=False,complex128=True,ensemble=None,ensemble_m=1,debug=False,add_x=0,feedback=True):
         """Initialize the quantum circuit for control transition and measurement induced transition using PyTorch. The tensor is saved as (0,1,...L-1, ancilla, ensemble, ensemble_m), where `ensemble` is for the ensemble size of the circuit (position of projection and control) and `ensemble_m` is for the ensemble size of outcome within a same circuit. 
         Numpy rng mode: If `seed` is a list, this corresponds to the single state vector simulation defined in `CT_quantum`. Numpy rng generator are used, the ensemble size is the same as `len(seed)`, `ensemble` should be None.
         PyTorch rng mode: when `seed_vec` and `seed_C` are not `None`, and `seed` is a number. `seed` will apply to initial state vec, and circuit. In this case, ensemble size is simply the total number of random samples with different circuit, and `ensemble_m` is 1 (by default). When `seed_vec` and `seed_C` and `seed` are all not None. `ensemble` and `ensemble_m` controls the number of different circuit and number of outcome in each circuit.
@@ -26,8 +27,8 @@ class CT_tensor:
             the random seed in the state vector, by default None, by default None
         seed_C : list of numpy.rng or int, optional
             the random seed in the circuit, by default None, by default None
-        xj : set of Fractions, optional
-            the set of attractors using Fractions, by default set([Fraction(1,3),Fraction(2,3)])
+        xj : frozenset of Fractions, optional
+            the frozenset of attractors using Fractions, by default frozenset([Fraction(1,3),Fraction(2,3)])
         _eps : float, optional
             error threshold, by default 1e-10
         ancilla : bool, optional
@@ -66,9 +67,10 @@ class CT_tensor:
         self.vec=self._initialize_vector()
         self.vec_history=[self.vec]
         self._eps=_eps
-        self.xj=set(xj)
+        self.xj=frozenset(xj)
         self.op_list=self._initialize_op()
-        self.new_idx,self.old_idx, self.not_new_idx=self.adder_gpu()
+        # self.new_idx,self.old_idx, self.not_new_idx=self.adder_gpu()
+        self.new_idx,self.old_idx, self.not_new_idx=self.initialize_adder()
         self.debug=debug
         self.feedback=feedback
 
@@ -166,6 +168,16 @@ class CT_tensor:
                 ("I",):lambda x:x
                 }
 
+    def initialize_adder(self):
+        new_idx,old_idx, not_new_idx={},{},{}
+        if self.xj == frozenset([Fraction(1,3),Fraction(2,3),Fraction(-1,3)]):
+            for xj in [frozenset([Fraction(1,3),Fraction(2,3)]), frozenset([Fraction(1,3),Fraction(-1,3)])]:
+                new_idx[xj],old_idx[xj],not_new_idx[xj]=self.adder_gpu(xj)
+        else:
+            new_idx[self.xj],old_idx[self.xj],not_new_idx[self.xj]=self.adder_gpu(self.xj)
+        return new_idx,old_idx,not_new_idx
+        
+    
     def Bernoulli_map(self,vec,rng=None,size=None):
         """Apply Bernoulli map to the state vector `vec`. Note that this is always applied to the whole ensemble_m axis.
 
@@ -211,7 +223,15 @@ class CT_tensor:
         # Adder
         if not vec.is_contiguous():
             vec=vec.contiguous()
-        self.adder_tensor_(vec)
+        if self.xj==frozenset([Fraction(1,3),Fraction(2,3),Fraction(-1,3)]):
+            if len(n)==1:
+                self.adder_tensor_(vec,xj=frozenset([Fraction(1,3),Fraction(2,3)]))
+            elif len(n)==2:
+                self.adder_tensor_(vec,xj=frozenset([Fraction(1,3),Fraction(-1,3)]))
+            else:
+                raise NotImplementedError(f"control map with len(n)={len(n)} not supported")
+        else:
+            self.adder_tensor_(vec,xj=self.xj)
         return vec
     
     def projection_map(self,vec,pos,n):
@@ -244,7 +264,7 @@ class CT_tensor:
         vec=self.op_list[("B",)](vec,size=self.ensemble)
         self.update_history(vec)
         
-    def random_control(self,p_ctrl,p_proj,vec=None):
+    def random_control(self,p_ctrl,p_proj,vec=None,p_global=None):
         """Ramdonly apply `bernoulli_map`, `control_map` (with prob of `p_ctrl`) and `projection_map` (with prob of `p_proj`) to the state vector `vec`. 
 
         Parameters
@@ -267,18 +287,40 @@ class CT_tensor:
             # apply control map
             vec_ctrl=vec[...,op_idx_dict['C'][:,0],:]
             ctrl_idx=[op_idx_dict['C'][:,0], torch.arange(self.ensemble_m,device=self.device)]
-            if self.xj in [set([Fraction(1,3),Fraction(2,3)]), set([0]),set([1]),set([-1])]:
+            if self.xj in [frozenset([Fraction(1,3),Fraction(2,3)]), frozenset([0]),frozenset([1]),frozenset([-1])]:
                 p_0= self.inner_prob(vec=vec_ctrl,pos=[self.L-1],n_list=[0])[None] # prob for 0
                 ctrl_outcome_idx_dict=self.generate_binary(idx_list=ctrl_idx, p=p_0,rng=self.rng,label=[0,1])
                 for key,idx in ctrl_outcome_idx_dict.items():
                     if len(idx)>0:
                         vec[...,idx[:,0],idx[:,1]]=self.op_list[("C",key)](vec[...,idx[:,0],idx[:,1]])
-            elif self.xj==set([Fraction(1,3),Fraction(-1,3)]):
+            elif self.xj==frozenset([Fraction(1,3),Fraction(-1,3)]):
                 p_0=torch.stack([self.inner_prob(vec_ctrl,pos=[0,self.L-1],n_list=n) for n in [(0,0),(0,1),(1,0)]])
                 ctrl_outcome_idx_dict=self.generate_binary(ctrl_idx, p=p_0,rng=self.rng,label=[(0,0),(0,1),(1,0),(1,1)])
                 for key,idx in ctrl_outcome_idx_dict.items():
                     if len(idx)>0:
                         vec[...,idx[:,0],idx[:,1]]=self.op_list[('C',)+key](vec[...,idx[:,0],idx[:,1]])
+            elif self.xj==frozenset([Fraction(1,3),Fraction(2,3),Fraction(-1,3)]):
+                assert p_global is not None, "p_global should not be None"
+                op2ctrl_idx_dict=self.generate_binary(idx_list=ctrl_idx, p=torch.tensor([p_global,],device=self.device),rng=self.rng_C,label=['C-Global','C-Local'])
+                # del op_idx_dict['C']
+                op_idx_dict.update(op2ctrl_idx_dict)
+                for key,idx in op_idx_dict.items():
+                    if len(idx)>0:
+                        vec_ctrl=vec[...,op_idx_dict[key][:,0],:]
+                        ctrl_idx=[op_idx_dict[key][:,0], torch.arange(self.ensemble_m,device=self.device)]
+                        if key == 'C-Global':
+                            p_0= self.inner_prob(vec=vec_ctrl,pos=[self.L-1],n_list=[0])[None] # prob for 0
+                            ctrl_outcome_idx_dict=self.generate_binary(idx_list=ctrl_idx, p=p_0,rng=self.rng,label=[0,1])
+                            for key,idx in ctrl_outcome_idx_dict.items():
+                                if len(idx)>0:
+                                    vec[...,idx[:,0],idx[:,1]]=self.op_list[("C",key)](vec[...,idx[:,0],idx[:,1]])
+                        elif key == 'C-Local':
+                            p_0=torch.stack([self.inner_prob(vec_ctrl,pos=[0,self.L-1],n_list=n) for n in [(0,0),(0,1),(1,0)]])
+                            ctrl_outcome_idx_dict=self.generate_binary(ctrl_idx, p=p_0,rng=self.rng,label=[(0,0),(0,1),(1,0),(1,1)])
+                            for key,idx in ctrl_outcome_idx_dict.items():
+                                if len(idx)>0:
+                                    vec[...,idx[:,0],idx[:,1]]=self.op_list[('C',)+key](vec[...,idx[:,0],idx[:,1]])
+
 
         proj_idx_dict={} # {pos: {True: .., False:..}} whether pos is projected site
         proj_outcome_idx_dict={} # {pos: {True:.., False: ..}} if projected, whether it is projected to 0 
@@ -320,13 +362,13 @@ class CT_tensor:
         if (op_idx_dict['C']).numel()>0:
             vec_ctrl=vec[...,op_idx_dict['C'][:,0],:]
             ctrl_idx=[op_idx_dict['C'][:,0], torch.arange(self.ensemble_m,device=self.device)]
-            if self.xj in [set([Fraction(1,3),Fraction(2,3)]), set([0]),set([1]),set([-1])]:
+            if self.xj in [frozenset([Fraction(1,3),Fraction(2,3)]), frozenset([0]),frozenset([1]),frozenset([-1])]:
                 p_0= self.inner_prob(vec=vec_ctrl,pos=[self.L-1],n_list=[0])[None]
                 self.generate_binary(ctrl_idx, p=None,rng=self.rng,dummy=True,label=None)
                 for key, idx in ctrl_outcome_idx_dict.items():
                     if len(idx)>0:
                         vec[...,idx[:,0],idx[:,1]]=self.op_list[("C",key)](vec[...,idx[:,0],idx[:,1]])
-            elif self.xj==set([Fraction(1,3),Fraction(-1,3)]):
+            elif self.xj==frozenset([Fraction(1,3),Fraction(-1,3)]):
                 p_0=torch.stack([self.inner_prob(vec_ctrl,pos=[0,self.L-1],n_list=n) for n in [(0,0),(0,1),(1,0)]])
                 self.generate_binary(ctrl_idx, p=p_0,rng=self.rng,dummy=True,label=None)
                 for key,idx in ctrl_outcome_idx_dict.items():
@@ -366,11 +408,11 @@ class CT_tensor:
         """
         if vec is None:
             vec=self.vec
-        if self.xj in [set([Fraction(1,3),Fraction(2,3)]), set([Fraction(1,3),Fraction(-1,3)])]:
+        if self.xj in [frozenset([Fraction(1,3),Fraction(2,3)]), frozenset([Fraction(1,3),Fraction(-1,3)]),frozenset([Fraction(1,3),Fraction(2,3),Fraction(-1,3)])]:
             O=self.ZZ_tensor(vec)
-        elif self.xj in [set([0]),set([-1])]:
+        elif self.xj in [frozenset([0]),frozenset([-1])]:
             O=self.Z_tensor(vec)
-        elif self.xj == set([1]):
+        elif self.xj == frozenset([1]):
             O=-self.ZZ_tensor(vec)
         else:
             raise NotImplementedError(f"Order parameter of {self.xj} is not implemented")
@@ -502,7 +544,7 @@ class CT_tensor:
         p : tuple of prob, optional
             probabilities, by default None
         """
-        '''Maybe I should abandon the previous way of storing history, why not just use the four *_idx_dict to store the history directly? This will also create comvenience when call it'''
+        '''Maybe I should abandon the previous way of storing history, why not just use the four *_idx_dict to store the history directly? This will also create convenience when call it'''
         if vec is not None:
             if self.store_vec:
                 self.vec_history.append(vec.cpu().clone())
@@ -608,7 +650,7 @@ class CT_tensor:
         return vec
 
     def P_tensor_(self,vec,n,pos):
-        """Directly set zero at tensor[...,0,:] =0 for n==1 and tensor[...,1,:] =0 for n==0. This works both one and two ensemble indices. 
+        """Directly frozenset zero at tensor[...,0,:] =0 for n==1 and tensor[...,1,:] =0 for n==0. This works both one and two ensemble indices. 
 
         Parameters
         ----------
@@ -619,7 +661,7 @@ class CT_tensor:
         pos : int, {0,1,...,L-1}
             position to apply the projection.
         """
-        '''directly set zero at tensor[...,0] =0 for n==1 and tensor[...,1] =0 for n==0'
+        '''directly frozenset zero at tensor[...,0] =0 for n==1 and tensor[...,1] =0 for n==0'
         This is an in-placed operation
         '''
         for n_i,pos_i in zip(n,pos):
@@ -629,11 +671,13 @@ class CT_tensor:
 
     def R_tensor(self,vec,n,pos):
         self.P_tensor_(vec,n,pos)
-        if self.xj in [set([Fraction(1,3),Fraction(2,3)]), set([0]),set([1]),set([-1])]:
+        # if self.xj in [frozenset([Fraction(1,3),Fraction(2,3)]), frozenset([0]),frozenset([1]),frozenset([-1])]:
+        if len(n)==1:
             if n[0]==1:
                 if self.feedback:
                     vec=self.XL_tensor(vec)
-        elif self.xj==set([Fraction(1,3),Fraction(-1,3)]):
+        # elif self.xj==frozenset([Fraction(1,3),Fraction(-1,3)]):
+        elif len(n)==2: 
             if n[0]^n[1]==0:
                 if self.feedback:
                     vec=self.XL_tensor(vec)
@@ -737,7 +781,7 @@ class CT_tensor:
             rs+=P0*1+(1-P0)*(-1)
         return rs/self.L
 
-    def adder_gpu(self):
+    def adder_gpu(self,xj):
         """Calculate the shift adder index, namely, `old_index` -> `new_index`, and `not_new_index` should be all zero. This is not a full adder, which assume the leading digit in the input bitstring is zero (because of the T^{-1}R_L, the leading bit should always be zero). 
 
         Returns
@@ -745,7 +789,7 @@ class CT_tensor:
         tuple of torch.tensor
             new_idx, old_idx, not_new_idx
         """
-        if self.xj==set([Fraction(1,3),Fraction(2,3)]):
+        if xj==frozenset([Fraction(1,3),Fraction(2,3)]):
             int_1_6=(int(Fraction(1,6)*2**self.L)|1)
             int_1_3=(int(Fraction(1,3)*2**self.L))
             old_idx=torch.arange(2**(self.L-1),device=self.device).view((2,-1))
@@ -755,19 +799,19 @@ class CT_tensor:
             mask_1=(new_idx&(1<<self.L-1) == (1<<self.L-1)) & (new_idx&(1<<2) == (0)) & (new_idx&(1) == (1))
             mask_2=(new_idx&(1<<self.L-1) == (0)) & (new_idx&(1<<2) == (1<<2)) & (new_idx&(1) == (0))
             new_idx[mask_1+mask_2]=new_idx[mask_1+mask_2]^(0b10)
-        elif self.xj in [set([0]),set([Fraction(1,3),Fraction(-1,3)])]:
+        elif xj in [frozenset([0]),frozenset([Fraction(1,3),Fraction(-1,3)])]:
             return torch.tensor([]), torch.tensor([]),torch.tensor([])
-        elif self.xj==set([1]):
+        elif xj==frozenset([1]):
             int_1=(1<<self.L)-1
             int_1_2=(1<<(self.L-1))+1
             old_idx=torch.arange(2**(self.L-1),device=self.device).view((2,-1))
             adder_idx=torch.tensor([[int_1],[int_1_2]],device=self.device)
             new_idx=(old_idx+adder_idx)%(1<<self.L)
-        elif self.xj==set([-1]):
+        elif xj==frozenset([-1]):
             old_idx=torch.arange(2**(self.L),device=self.device).view((2,-1))
             new_idx=(old_idx+self.add_x)%(1<<self.L)
         else:
-            raise NotImplementedError(f"{self.xj} is not implemented")
+            raise NotImplementedError(f"{xj} is not implemented")
         if self.ancilla:
             new_idx=torch.hstack((new_idx<<1,(new_idx<<1)+1))
             old_idx=torch.hstack((old_idx<<1,(old_idx<<1)+1))
@@ -775,7 +819,7 @@ class CT_tensor:
         not_new_idx[new_idx]=False
         return new_idx, old_idx, not_new_idx
 
-    def adder_tensor_(self,vec):
+    def adder_tensor_(self,vec,xj):
         """Apply the index shuffling of `vec` using the `old_idx` and `new_idex` generated from `adder_gpu`. 
 
         Parameters
@@ -783,9 +827,9 @@ class CT_tensor:
         vec : torch.tensor
             state vector 
         """
-        new_idx=self.new_idx.flatten()
-        old_idx=self.old_idx.flatten()
-        not_new_idx=self.not_new_idx.flatten()
+        new_idx=self.new_idx[xj].flatten()
+        old_idx=self.old_idx[xj].flatten()
+        not_new_idx=self.not_new_idx[xj].flatten()
         if (new_idx).shape[0]>0 and (old_idx).shape[0]>0:
             vec_flatten=vec.view((2**self.L_T,-1))    
             vec_flatten[new_idx]=vec_flatten[old_idx]
@@ -803,7 +847,7 @@ class CT_tensor:
         rng : list of np.rng or torch.Generator
             Random generators to use. 
         dummy : bool, optional
-            If false, no dictionary will be generated, and exists for reproducibility, by default False
+            If false, no dictionary will be generated, and exists for the reason of reproducibility, by default False
 
         Returns
         -------

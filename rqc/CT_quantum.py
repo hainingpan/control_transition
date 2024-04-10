@@ -246,6 +246,28 @@ class CT_quantum:
                     self.rng.random() # dummy in random pro Pi0/Pi1
             self.update_history(vec,op_l,None)
     
+    def fixed_control(self,p_ctrl):
+        '''a temporary protocol, with fixed Unitary and N_c control from binomial distribution'''
+        vec=self.vec_history[-1].copy()
+        op_l=[]
+        
+        n=self.rng_C.binomial(self.L,p_ctrl)
+        for _ in range(n):
+            p_0=self.inner_prob(vec, pos=[self.L-1],n_list=[0])
+            op=('C',0) if self.rng.random()<=p_0 else ('C',1)
+            vec=self.op_list[op](vec)
+            op_l.append(op)
+
+
+        
+        for _ in range(self.L):
+            vec=self.op_list[('B',)](vec)
+            op_l.append(('B',))
+        
+        
+
+        self.update_history(vec,op_l,None)
+
     def order_parameter(self,vec=None):
         """Calculate the order parameter. For `xj={1/3,2/3}`, it is \sum Z.Z, for `xj={0}`, it is \sum Z.
 
@@ -301,14 +323,16 @@ class CT_quantum:
         not_subregion=[i for i in range(self.L_T) if i not in subregion]
         vec_tensor_T=vec_tensor.transpose(np.hstack([subregion , not_subregion]))
         S=np.linalg.svd(vec_tensor_T.reshape((2**len(subregion),2**len(not_subregion))),compute_uv=False)
-        if threshold is not None:
-            S_pos2=np.clip(S,threshold,None)**2
-        else:
-            S_pos2=S**2
+        S_pos=np.clip(S,1e-18,None)
+        S_pos2=S_pos**2
+        # if threshold is not None:
+        #     S_pos2=np.clip(S,threshold,None)**2
+        # else:
+        #     S_pos2=S**2
         if n==1:
             return -np.sum(np.log(S_pos2)*S_pos2)
         elif n==0:
-            return np.log((S_pos2>threshold).sum())
+            return np.log((S_pos2>threshold**2).sum())
         elif n==np.inf:
             return -np.log(np.max(S_pos2))
         else:

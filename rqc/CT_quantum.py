@@ -4,7 +4,7 @@ from fractions import Fraction
 from functools import partial, lru_cache
 import scipy.sparse as sp
 class CT_quantum:
-    def __init__(self,L,store_vec=False,store_op=False,store_prob=False,seed=None,seed_vec=None,seed_C=None,x0=None,xj=set([Fraction(1,3),Fraction(2,3)]),_eps=1e-10, ancilla=False,normalization=True,debug=False,monitor=False,feedback=True,add_x=False,fixed_point=[]):
+    def __init__(self,L,store_vec=False,store_op=False,store_prob=False,seed=None,seed_vec=None,seed_C=None,x0=None,xj=frozenset([Fraction(1,3),Fraction(2,3)]),_eps=1e-10, ancilla=False,normalization=True,debug=False,monitor=False,feedback=True,add_x=False,fixed_point=[]):
         """Initialize the quantum circuit for the control transition (CT)
 
         Parameters
@@ -25,8 +25,8 @@ class CT_quantum:
             the random seed in the circuit, by default None
         x0 : float|Fraction(a,b), optional
             the initial state represented by a float number within [0,1), by default None, if None, the initial state is Haar random state
-        xj : set of Fractions, optional
-            the set of attractors using Fractions, by default set([Fraction(1,3),Fraction(2,3)])
+        xj : frozenset of Fractions, optional
+            the frozenset of attractors using Fractions, by default frozenset([Fraction(1,3),Fraction(2,3)])
         _eps : float, optional
             error threshold, by default 1e-10
         ancilla : bool, optional
@@ -57,7 +57,7 @@ class CT_quantum:
         self.vec=self._initialize_vector() # initialize the state vector
         self.vec_history=[self.vec] # store the history of state vector
         self._eps=_eps
-        self.xj=set(xj)
+        self.xj=frozenset(xj)
         self.op_list=self._initialize_op() # initialize operators in the circuit
         self.normalization=normalization
         self.feedback=feedback   
@@ -150,7 +150,15 @@ class CT_quantum:
         # Adder
         if vec.ndim >1 :
             vec=vec.flatten()
-        vec=self.adder_cpu(vec)
+        if self.xj==frozenset([Fraction(1,3),Fraction(2,3),Fraction(-1,3)]):
+            if len(n)==1:
+                vec=self.adder_cpu(vec,xj=frozenset([Fraction(1,3),Fraction(2,3)]))
+            elif len(n)==2:
+                vec=self.adder_cpu(vec,xj=frozenset([Fraction(1,3),Fraction(-1,3)]))
+            else:
+                raise NotImplementedError(f"control map with len(n)={len(n)} not supported")
+        else:
+            vec=self.adder_cpu(vec,xj=self.xj)
         
         return vec
 
@@ -183,7 +191,7 @@ class CT_quantum:
         vec=self.op_list[('B',)](vec)
         self.update_history(vec,('B',),None)
 
-    def random_control(self,p_ctrl,p_proj):
+    def random_control(self,p_ctrl,p_proj,p_global=None):
         """The competition between chaotic random unitary, control map and projection, where the projection can only be applied after the unitary. The probability of control is `p_ctrl`, and the probability of projection is `p_proj`.
 
         Parameters
@@ -192,22 +200,32 @@ class CT_quantum:
             probability of control
         p_proj : float, 0<=p_proj<=1
             probability of projection
+        p_global : float, 0<=p_global<=1
+            probability of using global control
         """ 
         vec=self.vec_history[-1].copy()
         
         op_l=[]
         if self.rng_C.random()<=p_ctrl:
             # control map
-            if self.xj in [set([Fraction(1,3),Fraction(2,3)]),set([0]),set([1]),set([-1])]:
+            if self.xj in [frozenset([Fraction(1,3),Fraction(2,3)]),frozenset([0]),frozenset([1]),frozenset([-1])]:
                 p_0=self.inner_prob(vec, pos=[self.L-1],n_list=[0])
                 op=('C',0) if self.rng.random()<=p_0 else ('C',1)
-            elif self.xj==set([Fraction(1,3),Fraction(-1,3)]):
+            elif self.xj in [frozenset([Fraction(1,3),Fraction(-1,3)])]:
                 p={n:self.inner_prob(vec,pos=[0,self.L-1],n_list=n) for n in [(0,0),(0,1),(1,0)]}
-                              
                 p[(1,1)]=np.clip(1-p[(0,0)]-p[(0,1)]-p[(1,0)],0,1)
                 op=self.rng.choice([(0,0),(0,1),(1,0),(1,1)],p=[p[(0,0)],p[(0,1)],p[(1,0)],p[(1,1)]])
-                
                 op=('C',)+tuple(op)
+            elif self.xj in [frozenset([Fraction(1,3),Fraction(2,3),Fraction(-1,3)])]:
+                assert p_global is not None, "p_global should not be None"
+                if self.rng_C.random()<=p_global:
+                    p_0=self.inner_prob(vec, pos=[self.L-1],n_list=[0])
+                    op=('C',0) if self.rng.random()<=p_0 else ('C',1)
+                else:
+                    p={n:self.inner_prob(vec,pos=[0,self.L-1],n_list=n) for n in [(0,0),(0,1),(1,0)]}
+                    p[(1,1)]=np.clip(1-p[(0,0)]-p[(0,1)]-p[(1,0)],0,1)
+                    op=self.rng.choice([(0,0),(0,1),(1,0),(1,1)],p=[p[(0,0)],p[(0,1)],p[(1,0)],p[(1,1)]])
+                    op=('C',)+tuple(op)
         else:
             # chaotic map
             op=('B',)
@@ -223,6 +241,7 @@ class CT_quantum:
                     vec=self.op_list[op_2](vec)
                     op_l.append(op_2)
         self.update_history(vec,op_l,None)
+
 
     def reference_control(self,op_history):
         """The reference protocol, where the operators are specified by `op_history`. The operators are applied sequentially.
@@ -261,13 +280,13 @@ class CT_quantum:
         """
         if vec is None:
             vec=self.vec_history[-1].copy()
-        if self.xj in [set([Fraction(1,3),Fraction(2,3)]),set([Fraction(1,3),Fraction(-1,3)])]:
+        if self.xj in [frozenset([Fraction(1,3),Fraction(2,3)]),frozenset([Fraction(1,3),Fraction(-1,3)]),frozenset([Fraction(1,3),Fraction(2,3),Fraction(-1,3)])]:
             O=self.ZZ_tensor(vec)
-        elif self.xj in [set([0]),]:
+        elif self.xj in [frozenset([0]),]:
             O=self.Z_tensor(vec)
-        elif self.xj ==set([1]):
+        elif self.xj ==frozenset([1]):
             O=-self.Z_tensor(vec)
-        elif self.xj in [set([-1])]:
+        elif self.xj in [frozenset([-1])]:
             O=self.overlap(vec)
         else:
             raise NotImplementedError(f"Order parameter of {self.xj} is not implemented")
@@ -535,12 +554,15 @@ class CT_quantum:
     @monitor
     def R_tensor(self,vec,n,pos):
         vec=self.P_tensor(vec,n,pos)
-        if self.xj in [set([Fraction(1,3),Fraction(2,3)]),set([0]),set([1]),set([-1])]:
+        # if self.xj in [frozenset([Fraction(1,3),Fraction(2,3)]),frozenset([0]),frozenset([1]),frozenset([-1])]:
+        if len(n)==1:
             # projection on the last bits
             if n[0]==1:
                 if self.feedback:
                     vec=self.XL_tensor(vec)
-        elif self.xj==set([Fraction(1,3),Fraction(-1,3)]):
+        # elif self.xj==frozenset([Fraction(1,3),Fraction(-1,3)]):
+        elif len(n)==2:
+            # projection on the first and last bits
             if n[0]^n[1]==0:
                 if self.feedback:
                     vec=self.XL_tensor(vec)
@@ -607,11 +629,11 @@ class CT_quantum:
         return np.sum(np.abs(vec[self.fixed_point])**2).real
 
     @monitor
-    def adder_cpu(self,vec):
+    def adder_cpu(self,vec,xj):
         if not self.ancilla:
-            vec=self.adder()@vec
+            vec=self.adder(xj)@vec
         else:
-            vec=(self.adder()@vec.reshape((2**self.L,2))).flatten()
+            vec=(self.adder(xj)@vec.reshape((2**self.L,2))).flatten()
         
         if self.normalization and not self.feedback:
             print(f'before {vec.conj()@vec}')
@@ -619,7 +641,7 @@ class CT_quantum:
         return vec
         
     @lru_cache(maxsize=None)
-    def adder(self):
+    def adder(self,xj):
         """Calculate the adder matrix, which is the shuffle of the state basis. Note that this is not a full adder, which assumes the leading digit in the input bitstring is zero (because of the T^{-1}R_L, the leading bit should always be zero).
 
         Returns
@@ -627,7 +649,7 @@ class CT_quantum:
         numpy.array, shape=(2**L,2**L)
             adder matrix
         """
-        if self.xj==set([Fraction(1,3),Fraction(2,3)]):
+        if xj==frozenset([Fraction(1,3),Fraction(2,3)]):
             int_1_6=dec2bin(Fraction(1,6), self.L)|1
             int_1_3=dec2bin(Fraction(1,3), self.L)
 
@@ -648,9 +670,9 @@ class CT_quantum:
             new_idx[mask_1+mask_2]=new_idx[mask_1+mask_2]^(0b10)
             return sp.coo_matrix((ones,(new_idx,old_idx)),shape=(2**self.L,2**self.L))
 
-        elif self.xj in [set([0]),set([Fraction(1,3),Fraction(-1,3)])]:
+        elif xj in [frozenset([0]),frozenset([Fraction(1,3),Fraction(-1,3)])]:
             return sp.eye(2**self.L)   
-        elif self.xj == set([1]):
+        elif xj == frozenset([1]):
             # int_1=(1<<self.L)-1
             # int_1_2=(1<<(self.L-1))+1
             # old_idx=np.arange(2**(self.L-1))
@@ -665,11 +687,11 @@ class CT_quantum:
             else:
                 raise NotImplementedError("Non-feedback is not implemented for xj=1")
             return sp.coo_matrix((ones,(new_idx,old_idx)),shape=(2**self.L,2**self.L))
-        elif self.xj == set([-1]):
+        elif xj == frozenset([-1]):
             old_idx=np.arange(2**(self.L))
             # adder_idx=np.array([self.add_x]*2**self.L)
             new_idx=(old_idx+self.add_x)%2**self.L
             ones=np.ones(2**(self.L))
             return sp.coo_matrix((ones,(new_idx,old_idx)),shape=(2**self.L,2**self.L))
         else:
-            raise NotImplementedError(f"{self.xj} is not implemented")
+            raise NotImplementedError(f"{xj} is not implemented")

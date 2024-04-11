@@ -66,56 +66,70 @@ def add_to_dict(data_dict,data,filename,fixed_params_keys={},skip_keys=set(['off
     else:
         raise ValueError(f'{filename} does not have args')
     
-    # if 'offset' in iterator and iterator['offset']>0:
-    #     print(iterator)
-
     if filename.split('.')[-1] == 'pickle':
         L_list=np.arange(*data['args'].L)
-        p_ctrl_list=np.round(np.linspace(data['args'].p_ctrl[0],data['args'].p_ctrl[1],int(data['args'].p_ctrl[2])),3)
-        p_proj_list=np.round(np.linspace(data['args'].p_proj[0],data['args'].p_proj[1],int(data['args'].p_proj[2])),3)
+        if hasattr(data['args'],'p_ctrl'):
+            p_ctrl_list=np.round(np.linspace(data['args'].p_ctrl[0],data['args'].p_ctrl[1],int(data['args'].p_ctrl[2])),3)
+        if hasattr(data['args'],'p_proj'):
+            p_proj_list=np.round(np.linspace(data['args'].p_proj[0],data['args'].p_proj[1],int(data['args'].p_proj[2])),3)
         if hasattr(data['args'],'p_global'):
             p_global_list=np.round(np.linspace(data['args'].p_global[0],data['args'].p_global[1],int(data['args'].p_global[2])),3)
 
     for metric in set(data.keys())-set(['args']):
         if filename.split('.')[-1] == 'pickle':
-            for L_idx,L in enumerate(L_list):
-                for p_ctrl_idx,p_ctrl in enumerate(p_ctrl_list):
-                    for p_proj_idx,p_proj in enumerate(p_proj_list):
-                        if isinstance(data[metric],dict):
-                            # This is for dealing with singular value
-                            for key,val in data[metric].items():
-                                observations=data[metric][key][L_idx,p_ctrl_idx,p_proj_idx]
-                                if torch.is_tensor(observations):
-                                    observations=torch.nan_to_num(observations.cpu())
-                                    # assert not torch.isnan(observations).any(), "The TMI contains NaN values."
-                                params=(metric+'_'+key,L,p_ctrl,p_proj)
-                                
-                                if params in data_dict:
-                                    data_dict[params]=torch.vstack([data_dict[params],observations])
-                                else:
-                                    data_dict[params]=observations
-
-                        elif data[metric].dim()>=5:
-                            # data[metric].dim() > =5 is for EE
-                            observations=data[metric][L_idx,p_ctrl_idx,p_proj_idx]
+            if not hasattr(data['args'],'p_global'):
+                iteration_list=product(enumerate(L_list),enumerate(p_ctrl_list),enumerate(p_proj_list))
+            else:
+                iteration_list=product(enumerate(L_list),enumerate(p_ctrl_list),enumerate(p_proj_list),enumerate(p_global_list))
+            for iteration in iteration_list:
+                if not hasattr(data['args'],'p_global'):
+                    (L_idx,L),(p_ctrl_idx,p_ctrl),(p_proj_idx,p_proj)=iteration
+                    if isinstance(data[metric],dict):
+                        # This is for dealing with singular value, TMI
+                        for key,val in data[metric].items():
+                            observations=data[metric][key][L_idx,p_ctrl_idx,p_proj_idx]
                             if torch.is_tensor(observations):
                                 observations=torch.nan_to_num(observations.cpu())
-                                # assert not torch.isnan(observations).any(), "The EE contains NaN values."
-                            params=(metric,L,p_ctrl,p_proj)
+                                # assert not torch.isnan(observations).any(), "The TMI contains NaN values."
+                            params=(metric+'_'+key,L,p_ctrl,p_proj)
+                            
                             if params in data_dict:
                                 data_dict[params]=torch.vstack([data_dict[params],observations])
                             else:
                                 data_dict[params]=observations
+
+                    elif data[metric].dim()>=5:
+                        # data[metric].dim() > =5 is for EE
+                        observations=data[metric][L_idx,p_ctrl_idx,p_proj_idx]
+                        if torch.is_tensor(observations):
+                            observations=torch.nan_to_num(observations.cpu())
+                            # assert not torch.isnan(observations).any(), "The EE contains NaN values."
+                        params=(metric,L,p_ctrl,p_proj)
+                        if params in data_dict:
+                            data_dict[params]=torch.vstack([data_dict[params],observations])
                         else:
-                            observations=data[metric][L_idx,p_ctrl_idx,p_proj_idx]
-                            if torch.is_tensor(observations):
-                                observations=observations.cpu().tolist()
-                                observations=[obs for obs in observations if not np.isnan(obs)]
-                            params=(metric,L,p_ctrl,p_proj)
-                            if params in data_dict:
-                                data_dict[params]=data_dict[params]+observations
-                            else:
-                                data_dict[params]=observations
+                            data_dict[params]=observations
+                    else:
+                        observations=data[metric][L_idx,p_ctrl_idx,p_proj_idx]
+                        if torch.is_tensor(observations):
+                            observations=observations.cpu().tolist()
+                            observations=[obs for obs in observations if not np.isnan(obs)]
+                        params=(metric,L,p_ctrl,p_proj)
+                        if params in data_dict:
+                            data_dict[params]=data_dict[params]+observations
+                        else:
+                            data_dict[params]=observations
+                else:
+                    (L_idx,L),(p_ctrl_idx,p_ctrl),(p_proj_idx,p_proj),(p_global_idx,p_global)=iteration
+                    observations=data[metric][L_idx,p_ctrl_idx,p_proj_idx,p_global_idx]
+                    params=(metric,L,p_ctrl,p_proj,p_global)
+                    if torch.is_tensor(observations):
+                        observations=observations.cpu().tolist()
+                        observations=[obs for obs in observations if not np.isnan(obs)]
+                    if params in data_dict:
+                        data_dict[params]=data_dict[params]+observations
+                    else:
+                        data_dict[params]=observations
         elif filename.split('.')[-1] == 'json':
             params=(metric,)+tuple(val for key,val in iterator.items() if key != 'seed' and key not in fixed_params_keys and key not in skip_keys)
 

@@ -219,7 +219,7 @@ def generate_params(
                     add_to_dict(data_dict,data,fn,fixed_params_keys=fixed_params.keys())
         else:
             if filelist is None:
-                file_exist = os.path.join(fn_dir,fn) in all_fns
+                file_exist = fn in all_fns
             else:
                 file_exist = fn in all_fns
             

@@ -49,7 +49,9 @@ def add_to_dict(data_dict,data,filename,fixed_params_keys={},skip_keys=set(['off
     filename : str
         Filename of the data
     """    
+    from itertools import product
     import argparse
+    import torch
     data_dict['fn'].add(filename)
 
     assert not ('EE' in data and 'SA' in data), f'{filename} is problematic'
@@ -69,22 +71,32 @@ def add_to_dict(data_dict,data,filename,fixed_params_keys={},skip_keys=set(['off
         L_list=np.arange(*data['args'].L)
         p_ctrl_list=np.round(np.linspace(data['args'].p_ctrl[0],data['args'].p_ctrl[1],int(data['args'].p_ctrl[2])),3)
         p_proj_list=np.round(np.linspace(data['args'].p_proj[0],data['args'].p_proj[1],int(data['args'].p_proj[2])),3)
-        
+        if hasattr(data['args'],'p_global'):
+            p_global_list=np.round(np.linspace(data['args'].p_global[0],data['args'].p_global[1],int(data['args'].p_global[2])),3)
 
     for metric in set(data.keys())-set(['args']):
         if filename.split('.')[-1] == 'pickle':
-            for L_idx,L in enumerate(L_list):
-                for p_ctrl_idx,p_ctrl in enumerate(p_ctrl_list):
-                    for p_proj_idx,p_proj in enumerate(p_proj_list):
-                        observations=data[metric][L_idx,p_ctrl_idx,p_proj_idx]
-                        if torch.is_tensor(observations):
-                            observations=observations.cpu().tolist()
-                            observations=[obs for obs in observations if not np.isnan(obs)]
-                        params=(metric,L,p_ctrl,p_proj)
-                        if params in data_dict:
-                            data_dict[params]=data_dict[params]+observations
-                        else:
-                            data_dict[params]=observations
+            if not hasattr(data['args'],'p_global'):
+                iteration_list=product(enumerate(L_list),enumerate(p_ctrl_list),enumerate(p_proj_list))
+            else:
+                iteration_list=product(enumerate(L_list),enumerate(p_ctrl_list),enumerate(p_proj_list),enumerate(p_global_list))
+            for iteration in iteration_list:
+                if not hasattr(data['args'],'p_global'):
+                    (L_idx,L),(p_ctrl_idx,p_ctrl),(p_proj_idx,p_proj)=iteration
+                    observations=data[metric][L_idx,p_ctrl_idx,p_proj_idx]
+                    params=(metric,L,p_ctrl,p_proj)
+                else:
+                    (L_idx,L),(p_ctrl_idx,p_ctrl),(p_proj_idx,p_proj),(p_global_idx,p_global)=iteration
+                    observations=data[metric][L_idx,p_ctrl_idx,p_proj_idx,p_global_idx]
+                    params=(metric,L,p_ctrl,p_proj,p_global)
+                if torch.is_tensor(observations):
+                    observations=observations.cpu().tolist()
+                    observations=[obs for obs in observations if not np.isnan(obs)]
+                if params in data_dict:
+                    data_dict[params]=data_dict[params]+observations
+                else:
+                    data_dict[params]=observations
+
         else:
             params=(metric,)+tuple(val for key,val in iterator.items() if key != 'seed' and key not in fixed_params_keys and key not in skip_keys)
 
@@ -92,6 +104,29 @@ def add_to_dict(data_dict,data,filename,fixed_params_keys={},skip_keys=set(['off
                 data_dict[params].append(data[metric])
             else:
                 data_dict[params]=[data[metric]]
+
+
+    # for metric in set(data.keys())-set(['args']):
+    #     if filename.split('.')[-1] == 'pickle':
+    #         for L_idx,L in enumerate(L_list):
+    #             for p_ctrl_idx,p_ctrl in enumerate(p_ctrl_list):
+    #                 for p_proj_idx,p_proj in enumerate(p_proj_list):
+    #                     observations=data[metric][L_idx,p_ctrl_idx,p_proj_idx]
+    #                     if torch.is_tensor(observations):
+    #                         observations=observations.cpu().tolist()
+    #                         observations=[obs for obs in observations if not np.isnan(obs)]
+    #                     params=(metric,L,p_ctrl,p_proj)
+    #                     if params in data_dict:
+    #                         data_dict[params]=data_dict[params]+observations
+    #                     else:
+    #                         data_dict[params]=observations
+    #     else:
+    #         params=(metric,)+tuple(val for key,val in iterator.items() if key != 'seed' and key not in fixed_params_keys and key not in skip_keys)
+
+    #         if params in data_dict:
+    #             data_dict[params].append(data[metric])
+    #         else:
+    #             data_dict[params]=[data[metric]]
 
 
 def convert_pd(data_dict,names):
@@ -800,11 +835,24 @@ class DataCollapse:
         self.Lmin=0 if Lmin is None else Lmin
         self.Lmax=1000 if Lmax is None else Lmax
         self.params=params
-        self.p_='p' if p_dim==1 else ('p_ctrl' if 'p_proj' in params else 'p_proj')
-        self.df=self.load_dataframe(df,params,p_dim=p_dim)
+        if p_dim==1:
+            self.p='p'
+        elif p_dim==2:
+            if 'p_proj' in params:
+                self.p='p_ctrl'
+            else:
+                self.p='p_proj'
+        elif p_dim==3:
+            if 'p_global' in params:
+                self.p='p_ctrl'
+            else:
+                self.p='p_global'
+
+        # self.p_='p' if p_dim==1 else ('p_ctrl' if 'p_proj' in params else 'p_proj') 
+        self.df=self.load_dataframe(df,params)
         self.L_i,self.p_i,self.d_i,self.y_i = self.load_data()
     
-    def load_dataframe(self,df,params,p_dim):
+    def load_dataframe(self,df,params):
         df=df.xs(params.values(),level=list(params.keys()))['observations']
         df=df[(df.index.get_level_values(self.p_)<=self.p_range[1]) & (self.p_range[0]<=df.index.get_level_values(self.p_))]
         df=df[(df.index.get_level_values('L')<=self.Lmax) & (self.Lmin<=df.index.get_level_values('L'))]

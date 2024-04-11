@@ -49,8 +49,12 @@ def add_to_dict(data_dict,data,filename,fixed_params_keys={},skip_keys=set(['off
     filename : str
         Filename of the data
     """    
+    from itertools import product
     import argparse
+    import torch
+
     data_dict['fn'].add(filename)
+    # data_dict_fn_set.add(filename)
 
     assert not ('EE' in data and 'SA' in data), f'{filename} is problematic'
 
@@ -62,20 +66,50 @@ def add_to_dict(data_dict,data,filename,fixed_params_keys={},skip_keys=set(['off
     else:
         raise ValueError(f'{filename} does not have args')
     
-    # if 'offset' in iterator and iterator['offset']>0:
-    #     print(iterator)
-
     if filename.split('.')[-1] == 'pickle':
         L_list=np.arange(*data['args'].L)
-        p_ctrl_list=np.round(np.linspace(data['args'].p_ctrl[0],data['args'].p_ctrl[1],int(data['args'].p_ctrl[2])),3)
-        p_proj_list=np.round(np.linspace(data['args'].p_proj[0],data['args'].p_proj[1],int(data['args'].p_proj[2])),3)
-        
+        if hasattr(data['args'],'p_ctrl'):
+            p_ctrl_list=np.round(np.linspace(data['args'].p_ctrl[0],data['args'].p_ctrl[1],int(data['args'].p_ctrl[2])),3)
+        if hasattr(data['args'],'p_proj'):
+            p_proj_list=np.round(np.linspace(data['args'].p_proj[0],data['args'].p_proj[1],int(data['args'].p_proj[2])),3)
+        if hasattr(data['args'],'p_global'):
+            p_global_list=np.round(np.linspace(data['args'].p_global[0],data['args'].p_global[1],int(data['args'].p_global[2])),3)
 
     for metric in set(data.keys())-set(['args']):
         if filename.split('.')[-1] == 'pickle':
-            for L_idx,L in enumerate(L_list):
-                for p_ctrl_idx,p_ctrl in enumerate(p_ctrl_list):
-                    for p_proj_idx,p_proj in enumerate(p_proj_list):
+            if not hasattr(data['args'],'p_global'):
+                iteration_list=product(enumerate(L_list),enumerate(p_ctrl_list),enumerate(p_proj_list))
+            else:
+                iteration_list=product(enumerate(L_list),enumerate(p_ctrl_list),enumerate(p_proj_list),enumerate(p_global_list))
+            for iteration in iteration_list:
+                if not hasattr(data['args'],'p_global'):
+                    (L_idx,L),(p_ctrl_idx,p_ctrl),(p_proj_idx,p_proj)=iteration
+                    if isinstance(data[metric],dict):
+                        # This is for dealing with singular value, TMI
+                        for key,val in data[metric].items():
+                            observations=data[metric][key][L_idx,p_ctrl_idx,p_proj_idx]
+                            if torch.is_tensor(observations):
+                                observations=torch.nan_to_num(observations.cpu())
+                                # assert not torch.isnan(observations).any(), "The TMI contains NaN values."
+                            params=(metric+'_'+key,L,p_ctrl,p_proj)
+                            
+                            if params in data_dict:
+                                data_dict[params]=torch.vstack([data_dict[params],observations])
+                            else:
+                                data_dict[params]=observations
+
+                    elif data[metric].dim()>=5:
+                        # data[metric].dim() > =5 is for EE
+                        observations=data[metric][L_idx,p_ctrl_idx,p_proj_idx]
+                        if torch.is_tensor(observations):
+                            observations=torch.nan_to_num(observations.cpu())
+                            # assert not torch.isnan(observations).any(), "The EE contains NaN values."
+                        params=(metric,L,p_ctrl,p_proj)
+                        if params in data_dict:
+                            data_dict[params]=torch.vstack([data_dict[params],observations])
+                        else:
+                            data_dict[params]=observations
+                    else:
                         observations=data[metric][L_idx,p_ctrl_idx,p_proj_idx]
                         if torch.is_tensor(observations):
                             observations=observations.cpu().tolist()
@@ -85,7 +119,18 @@ def add_to_dict(data_dict,data,filename,fixed_params_keys={},skip_keys=set(['off
                             data_dict[params]=data_dict[params]+observations
                         else:
                             data_dict[params]=observations
-        else:
+                else:
+                    (L_idx,L),(p_ctrl_idx,p_ctrl),(p_proj_idx,p_proj),(p_global_idx,p_global)=iteration
+                    observations=data[metric][L_idx,p_ctrl_idx,p_proj_idx,p_global_idx]
+                    params=(metric,L,p_ctrl,p_proj,p_global)
+                    if torch.is_tensor(observations):
+                        observations=observations.cpu().tolist()
+                        observations=[obs for obs in observations if not np.isnan(obs)]
+                    if params in data_dict:
+                        data_dict[params]=data_dict[params]+observations
+                    else:
+                        data_dict[params]=observations
+        elif filename.split('.')[-1] == 'json':
             params=(metric,)+tuple(val for key,val in iterator.items() if key != 'seed' and key not in fixed_params_keys and key not in skip_keys)
 
             if params in data_dict:
@@ -93,7 +138,9 @@ def add_to_dict(data_dict,data,filename,fixed_params_keys={},skip_keys=set(['off
             else:
                 data_dict[params]=[data[metric]]
 
-
+def tuple_to_string_key(t):
+    return "_".join(map(str, t)) 
+        
 def convert_pd(data_dict,names):
     """Convert the dictionary to a pandas dataframe
 
@@ -112,7 +159,52 @@ def convert_pd(data_dict,names):
     import pandas as pd
     index = pd.MultiIndex.from_tuples([key for key in data_dict.keys() if key!='fn'], names=names)
     df = pd.DataFrame({'observations': [val for key,val in data_dict.items() if key!='fn']}, index=index)
-    return df           
+    return df    
+
+def convert_pd_0(data_dict,names,threshold):
+    """Convert the dictionary to a pandas witha a threshold for compute the 0th Renyi entropy"""
+    import pandas as pd
+
+    data_dict_0={}
+
+    for key, val in data_dict.items():
+        if key=='fn':
+            data_dict_0[key]=val
+        elif 'O' in key:
+            data_dict_0[key]=val
+        elif 'EE' == key[0]:
+            params=key[1:]
+            if ('EE',)+params not in data_dict_0:
+                data_dict_0[('EE',)+params]=entropy(data_dict[('EE',)+params],threshold,n=0).tolist()
+        elif 'TMI' in key[0]:
+            params=key[1:]
+            if ('TMI',)+params not in data_dict_0:
+                data_dict_0[('TMI',)+params]=tripartite_mutual_information(
+                    S_A=data_dict[('TMI_S_A',)+params],
+                    S_B=data_dict[('TMI_S_B',)+params],
+                    S_C=data_dict[('TMI_S_C',)+params],
+                    S_AB=data_dict[('TMI_S_AB',)+params],
+                    S_AC=data_dict[('TMI_S_AC',)+params],
+                    S_BC=data_dict[('TMI_S_BC',)+params],
+                    S_ABC=data_dict[('TMI_S_ABC',)+params],
+                    threshold=threshold,n=0).tolist()
+    df=convert_pd(data_dict_0,names)
+    return df
+
+def entropy(sv,threshold,n=0):
+    """compute n-th Renyi entropy from the singular value, the first axis is the ensemble and the second axis all singular value"""
+    from torch import log
+    if n==0:
+        return log((sv>threshold).sum(axis=1))
+    else:
+        raise NotImplementedError("Renyi entropy for n>0 is not yet implemented")
+
+def tripartite_mutual_information(S_A,S_B,S_C,S_AB,S_AC,S_BC,S_ABC,threshold, n=0):
+    if n==0:
+        return entropy(S_A,threshold,n=0)+entropy(S_B,threshold,n=0)+entropy(S_C,threshold,n=0)-entropy(S_AB,threshold,n=0)-entropy(S_AC,threshold,n=0)-entropy(S_BC,threshold,n=0)+entropy(S_ABC,threshold,n=0)
+    else:
+        raise NotImplementedError("tripartite MI for n>0 is not yet implemented")
+
 
 def generate_params(
     fixed_params,
@@ -169,6 +261,7 @@ def generate_params(
     import numpy as np
     from tqdm import tqdm
     import pickle
+    
 
 
     params_text=[]
@@ -187,8 +280,13 @@ def generate_params(
         data_dict_fn=os.path.join(fn_dir,cache_fn)
         if os.path.exists(data_dict_fn):
             print(f'Loading data_dict {data_dict_fn}')
-            with open(data_dict_fn,'rb') as f:
-                data_dict=pickle.load(f)
+            if data_dict_fn.split('.')[-1] == 'pickle':
+                with open(data_dict_fn,'rb') as f:
+                    data_dict=pickle.load(f)
+            elif data_dict_fn.split('.')[-1] == 'hdf5':
+                import h5py
+                # This is for storing singular value
+                data_dict=h5py.File(data_dict_fn,'a')
         else:
             print(f'Creating new data_dict {data_dict_fn}')
             data_dict={'fn':set()}
@@ -201,6 +299,10 @@ def generate_params(
         else:
             with open(filelist,'r') as f:
                 all_fns=f.read().split('\n')
+    # if data_dict_fn.split('.')[-1] == 'pickle':
+    #     data_dict_fn_set=data_dict['fn']
+    # elif data_dict_fn.split('.')[-1] == 'hdf5':
+    #     data_dict_fn_set=set(data_dict['fn'][:].astype('U'))
 
     for input0 in tqdm(inputs,mininterval=1,desc='generate_params',total=total):
         dict_params={key:val for key,val in zip(vary_params.keys(),input0)}
@@ -228,9 +330,19 @@ def generate_params(
             elif exist:
                 params_text.append(fn)
     if load:
+        # if (data_dict_file is not None) and (data_dict_fn.split('.')[-1] == 'hdf5'):
+        #     del data_dict['fn']
+        #     data_dict_fn_set_hdf5=data_dict.create_dataset("fn", (len(data_dict_fn_set)), dtype=h5py.special_dtype(vlen=str) )
+        #     data_dict_fn_set_hdf5[:]=list(data_dict_fn_set)
+        # else:
+        #     data_dict['fn']=data_dict_fn_set
+
         if data_dict_file is not None:
-            with open(data_dict_fn,'wb') as f:
-                pickle.dump(data_dict,f)
+            if data_dict_fn.split('.')[-1] == 'pickle':
+                with open(data_dict_fn,'wb') as f:
+                    pickle.dump(data_dict,f)
+            elif data_dict_fn.split('.')[-1] == 'hdf5':
+                data_dict.close()
         return data_dict
     else:
         if filename is not None:
@@ -249,7 +361,12 @@ def plot_line(
     yscale=None,
     ylim=None,
     method=np.mean,
-    errorbar=False
+    errorbar=False,
+    capsize=3,
+    capthick=None,
+    lw=1,
+    colormap=None,
+    **kwargs,
     ):
     """Plot a single line"""
     import matplotlib.pyplot as plt
@@ -267,7 +384,8 @@ def plot_line(
     df=df.xs(params.values(),level=list(params.keys()))
     if L_list is None:
         L_list=np.sort(df.index.get_level_values('L').unique())
-    colormap = (plt.cm.Blues(0.4+0.6*(i/L_list.shape[0])) for i in range(L_list.shape[0]))
+    if colormap is None:
+        colormap = (plt.cm.Blues(0.4+0.6*(i/L_list.shape[0])) for i in range(L_list.shape[0]))
     for L in sorted(L_list):
         dd=df.xs(key=L,level='L')['observations'].apply(method)
         if errorbar:
@@ -288,9 +406,9 @@ def plot_line(
         else:
             dd_sort=dd.values[arg_sort]
         if errorbar:
-            ax.errorbar(x[arg_sort],dd_sort,yerr=dd_se[arg_sort],label=f'L={L}',lw=1,color=colormap.__next__(),capsize=2)
+            ax.errorbar(x[arg_sort],dd_sort,yerr=dd_se[arg_sort],label=f'L={L}',lw=lw,color=colormap.__next__(),capsize=capsize,**kwargs)
         else:
-            ax.plot(x[arg_sort],dd_sort,'.-',label=f'L={L}',lw=1,color=colormap.__next__())
+            ax.plot(x[arg_sort],dd_sort,'.-',label=f'L={L}',lw=lw,color=colormap.__next__(),**kwargs)
     ax.legend()
     if ylim is not None:
         ax.set_ylim(ylim)
@@ -353,7 +471,7 @@ def plot_inset(
     ax.add_patch(line2)
 
 def plot_line_inset(
-    df_anc,
+    df,
     L_list,
     xlim1,
     xlim2,
@@ -378,7 +496,7 @@ def plot_line_inset(
 
     Parameters
     ----------
-    df_anc : DataFrame
+    df : DataFrame
         DataFrame to plot
     L_list : np.array
         List of L to plot, example: np.array([8,10,12])
@@ -426,14 +544,14 @@ def plot_line_inset(
     params={'Metrics':metrics,}
     params.update(fixed_params)
     
-    plot_line(df_anc,params=params,ax=ax,L_list=L_list,yscale=yscale,ylim=ylim,errorbar=errorbar,method=method,x_name=x_name)
+    plot_line(df,params=params,ax=ax,L_list=L_list,yscale=yscale,ylim=ylim,errorbar=errorbar,method=method,x_name=x_name)
     ax.grid('on')
     ax.set_xlim(0,0.6)
     if inset1:
-        plot_inset(df_anc,ax,xlim=xlim1,ylim=ylim1,ax_inset_pos=ax_inset_pos1,params=params,L_list=L_list,yscale=yscale,method=method,x_name=x_name)
+        plot_inset(df,ax,xlim=xlim1,ylim=ylim1,ax_inset_pos=ax_inset_pos1,params=params,L_list=L_list,yscale=yscale,method=method,x_name=x_name)
 
     if inset2:
-        plot_inset(df_anc,ax,xlim=xlim2,ylim=ylim2,ax_inset_pos=ax_inset_pos2,params=params,L_list=L_list,yscale=yscale,method=method,x_name=x_name)
+        plot_inset(df,ax,xlim=xlim2,ylim=ylim2,ax_inset_pos=ax_inset_pos2,params=params,L_list=L_list,yscale=yscale,method=method,x_name=x_name)
     
     fstr= lambda template: eval(f"f'{template}'")
 
@@ -800,11 +918,24 @@ class DataCollapse:
         self.Lmin=0 if Lmin is None else Lmin
         self.Lmax=1000 if Lmax is None else Lmax
         self.params=params
-        self.p_='p' if p_dim==1 else ('p_ctrl' if 'p_proj' in params else 'p_proj')
-        self.df=self.load_dataframe(df,params,p_dim=p_dim)
+        if p_dim==1:
+            self.p='p'
+        elif p_dim==2:
+            if 'p_proj' in params:
+                self.p='p_ctrl'
+            else:
+                self.p='p_proj'
+        elif p_dim==3:
+            if 'p_global' in params:
+                self.p='p_ctrl'
+            else:
+                self.p='p_global'
+
+        # self.p_='p' if p_dim==1 else ('p_ctrl' if 'p_proj' in params else 'p_proj') 
+        self.df=self.load_dataframe(df,params)
         self.L_i,self.p_i,self.d_i,self.y_i = self.load_data()
     
-    def load_dataframe(self,df,params,p_dim):
+    def load_dataframe(self,df,params):
         df=df.xs(params.values(),level=list(params.keys()))['observations']
         df=df[(df.index.get_level_values(self.p_)<=self.p_range[1]) & (self.p_range[0]<=df.index.get_level_values(self.p_))]
         df=df[(df.index.get_level_values('L')<=self.Lmax) & (self.Lmin<=df.index.get_level_values('L'))]
@@ -859,13 +990,13 @@ class DataCollapse:
         
         return (self.y_i-self.y_i_fitted)/self.d_i
     
-    def datacollapse(self,p_c=None,nu=None,**kwargs):
+    def datacollapse(self,p_c=None,nu=None,p_c_vary=True,nu_vary=True,**kwargs):
         """data collapse without drift, x_i=(p_i-p_c)L^{1/nu}, and try to make x_i vs y_i collapse to a smooth line"""
         from lmfit import minimize, Parameters
 
         params=Parameters()
-        params.add('p_c',value=p_c,min=0,max=1)
-        params.add('nu',value=nu,min=0,max=2)
+        params.add('p_c',value=p_c,min=0,max=1,vary=p_c_vary)
+        params.add('nu',value=nu,min=0,max=2,vary=nu_vary)
         def residual(params):
             p_c,nu=params['p_c'],params['nu']
             return self.loss(p_c,nu)
@@ -962,7 +1093,7 @@ class DataCollapse:
 
 
 
-    def plot_data_collapse(self,ax=None,drift=False,driftcollapse=False):
+    def plot_data_collapse(self,ax=None,drift=False,driftcollapse=False,plot_irrelevant=True,**kwargs):
         import matplotlib.pyplot as plt
         x_i=(self.p_i-self.p_c)*(self.L_i)**(1/self.nu)
         # x_i=self.p_i
@@ -974,7 +1105,7 @@ class DataCollapse:
         # color_iter=iter(plt.cm.rainbow(np.linspace(0,1,len(L_list))))
         color_iter = iter(plt.cm.Blues(0.4+0.6*(i/L_list.shape[0])) for i in range(L_list.shape[0]))
         color_r_iter = iter(plt.cm.Reds(0.4+0.6*(i/L_list.shape[0])) for i in range(L_list.shape[0]))
-        if drift and driftcollapse:
+        if drift and driftcollapse and plot_irrelevant:
             ax2=ax.twinx()
             ax2.set_ylabel(r'$y_{irre}$')
         for L,(start_idx,end_idx) in L_dict.items():
@@ -982,15 +1113,15 @@ class DataCollapse:
             if drift:
                 if not driftcollapse:
                     ax.errorbar(self.p_i[start_idx:end_idx], self.y_i[start_idx:end_idx], label=f'{L}', color=color, yerr=self.d_i[start_idx:end_idx], capsize=2, fmt='x',linestyle="None")
-                    ax.plot(self.p_i[start_idx:end_idx],self.y_i_fitted[start_idx:end_idx],label=f'{L}',color=color)
+                    ax.plot(self.p_i[start_idx:end_idx],self.y_i_fitted[start_idx:end_idx],label=f'{L}',color=color,**kwargs)
                 else:
-                    ax.scatter(x_i[start_idx:end_idx],self.y_i_minus_irrelevant[start_idx:end_idx],label=f'{L}',color=color)
-                    
-                    color_r=next(color_r_iter)
-                    ax2.scatter(x_i[start_idx:end_idx],self.y_i_irrelevant[start_idx:end_idx],label=f'{L}',color=color_r)
+                    ax.scatter(x_i[start_idx:end_idx],self.y_i_minus_irrelevant[start_idx:end_idx],label=f'{L}',color=color,**kwargs)
+                    if plot_irrelevant:
+                        color_r=next(color_r_iter)
+                        ax2.scatter(x_i[start_idx:end_idx],self.y_i_irrelevant[start_idx:end_idx],label=f'{L}',color=color_r,**kwargs)
 
             else:
-                ax.scatter(x_i[start_idx:end_idx],self.y_i[start_idx:end_idx],label=f'{L}',color=color)
+                ax.scatter(x_i[start_idx:end_idx],self.y_i[start_idx:end_idx],label=f'{L}',color=color,**kwargs)
                 
 
         ax.set_ylabel(r'$y_i$')
@@ -998,16 +1129,26 @@ class DataCollapse:
             if not driftcollapse:
                 ax.set_xlabel(r'$p_i$')
                 # TODO: check whether errorbar exists before
-                ax.set_title(rf'$p_c$={self.p_c:.3f}$\pm${self.res.params["p_c"].stderr:.3f},$\nu$={self.nu:.3f}$\pm${self.res.params["nu"].stderr:.3f},$y$= {self.y:.3f}$\pm${self.res.params["y"].stderr:.3f}')
+                try:
+                    ax.set_title(rf'$p_c$={self.p_c:.3f}$\pm${self.res.params["p_c"].stderr:.3f},$\nu$={self.nu:.3f}$\pm${self.res.params["nu"].stderr:.3f},$y$= {self.y:.3f}$\pm${self.res.params["y"].stderr:.3f}')
+                except:
+                    ax.set_title(rf'$p_c$={self.p_c:.3f},$\nu$={self.nu:.3f},$y$= {self.y:.3f}')
+
             else:
                 ax.set_xlabel(r'$x_i$')
-                ax.set_title(rf'$p_c$={self.p_c:.3f}$\pm${self.res.params["p_c"].stderr:.3f},$\nu$={self.nu:.3f}$\pm${self.res.params["nu"].stderr:.3f},$y$= {self.y:.3f}$\pm${self.res.params["y"].stderr:.3f}')
+                try:
+                    ax.set_title(rf'$p_c$={self.p_c:.3f}$\pm${self.res.params["p_c"].stderr:.3f},$\nu$={self.nu:.3f}$\pm${self.res.params["nu"].stderr:.3f},$y$= {self.y:.3f}$\pm${self.res.params["y"].stderr:.3f}')
+                except:
+                    ax.set_title(rf'$p_c$={self.p_c:.3f},$\nu$={self.nu:.3f},$y$= {self.y:.3f}')
+
                 ax.set_ylabel(r'$y_i-y_{irre}$')
         else:
             ax.set_xlabel(r'$(p_i-p_c)L^{1/\nu}$')
             # ax.set_title(rf'$p_c={self.p_c:.3f},\nu={self.nu:.3f}$')
-            ax.set_title(rf'$p_c$={self.p_c:.3f}$\pm${self.res.params["p_c"].stderr:.3f},$\nu$={self.nu:.3f}$\pm${self.res.params["nu"].stderr:.3f}')
-
+            try:
+                ax.set_title(rf'$p_c$={self.p_c:.3f}$\pm${self.res.params["p_c"].stderr:.3f},$\nu$={self.nu:.3f}$\pm${self.res.params["nu"].stderr:.3f}')
+            except:
+                ax.set_title(rf'$p_c$={self.p_c:.3f},$\nu$={self.nu:.3f}')
         
         ax.legend()
         ax.grid('on')
@@ -1088,4 +1229,69 @@ def plot_chi2_ratio(model_dict,L1=False):
     ax2.set_ylabel('Irrelevant contribution')
     ax2.fill_between(n1_list,0.,0.1,alpha=0.2,color='orange')
 
-        
+def extrapolate_fitting(data,params,p_range,Lmin=12,Lmax=24,nu=1.3,p_c=0.5,threshold=(-1,1)):
+    from tqdm import tqdm
+    dc={}
+    for key,val in tqdm(data.items()):
+        if threshold[0]<key<threshold[1]:
+            dc[key]=DataCollapse(df=val,params=params,Lmin=Lmin,Lmax=Lmax,p_range=p_range,p_dim=2)
+            dc[key].datacollapse(nu=nu,p_c=p_c,)
+    return dc
+
+def plot_extrapolate_fitting(dc,ax=None):
+    import matplotlib.pyplot as plt
+    if ax is None:
+        fig,ax=plt.subplots()
+    xlist=list(dc.keys())
+    nu=[dc[key].res.params['nu'].value for key in dc.keys()]
+    nu_err=[dc[key].res.params['nu'].stderr for key in dc.keys()]
+    ax.errorbar(xlist,nu,yerr=nu_err,fmt='.-',capsize=3,label=r'$\nu$',color='k')
+    ax2=ax.twinx()
+    p_c=[dc[key].res.params['p_c'].value for key in dc.keys()]
+    p_c_err=[dc[key].res.params['p_c'].stderr for key in dc.keys()]
+    ax2.errorbar(xlist,p_c,yerr=p_c_err,fmt='.-',capsize=3,label='$p_c$',color='b')
+
+    ax2.tick_params(axis='y', labelcolor='b')
+
+    # ax.legend()
+    ax.set_xscale('log')
+    ax.set_xlabel('Threshold of SV')
+    ax.set_ylabel(r'$\nu$',color='k')
+    ax2.set_ylabel(r'$p_c$',color='b')
+
+def add_optimal(optimal_model,model):
+    import pandas as pd
+    df_new = pd.DataFrame([model])
+    index = pd.MultiIndex.from_tuples(
+        [(model.params['Metrics'],
+        model.params['p_proj'] if 'p_proj' in model.params else None,
+        model.params['p_ctrl'] if 'p_ctrl' in model.params else None)],
+        names=['Metric', 'p_proj', 'p_ctrl']
+        )
+    p_c=model.res.params['p_c'].value
+    p_c_error=model.res.params['p_c'].stderr
+    nu=model.res.params['nu'].value
+    nu_error=model.res.params['nu'].stderr
+    if 'y' in model.res.params:
+        y=model.res.params['y'].value
+        y_error=model.res.params['y'].stderr
+    else:
+        y=None
+        y_error=None
+    new={
+        'p_c':p_c, 
+        'p_c_error':p_c_error,
+        'nu': nu,
+        'nu_error': nu_error,
+        'y': y,
+        'y_error': y_error}
+    new_df=pd.DataFrame(new,index=index)
+    # return  new_df
+    return pd.concat([optimal_model,new_df],axis=0)
+
+def initialize_df():
+    import pandas as pd
+    return pd.DataFrame(
+    columns=['p_c', 'p_c_error', 'nu', 'nu_error', 'y', 'y_error'],
+    index= pd.MultiIndex(levels=[[], [], []], codes=[[], [], []], names=['Metric', 'p_proj', 'p_ctrl'])
+)

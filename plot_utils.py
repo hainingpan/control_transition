@@ -919,17 +919,17 @@ class DataCollapse:
         self.Lmax=1000 if Lmax is None else Lmax
         self.params=params
         if p_dim==1:
-            self.p='p'
+            self.p_='p'
         elif p_dim==2:
             if 'p_proj' in params:
-                self.p='p_ctrl'
+                self.p_='p_ctrl'
             else:
-                self.p='p_proj'
+                self.p_='p_proj'
         elif p_dim==3:
             if 'p_global' in params:
-                self.p='p_ctrl'
+                self.p_='p_ctrl'
             else:
-                self.p='p_global'
+                self.p_='p_global'
 
         # self.p_='p' if p_dim==1 else ('p_ctrl' if 'p_proj' in params else 'p_proj') 
         self.df=self.load_dataframe(df,params)
@@ -1259,39 +1259,88 @@ def plot_extrapolate_fitting(dc,ax=None):
     ax.set_ylabel(r'$\nu$',color='k')
     ax2.set_ylabel(r'$p_c$',color='b')
 
-def add_optimal(optimal_model,model):
-    import pandas as pd
-    df_new = pd.DataFrame([model])
-    index = pd.MultiIndex.from_tuples(
-        [(model.params['Metrics'],
-        model.params['p_proj'] if 'p_proj' in model.params else None,
-        model.params['p_ctrl'] if 'p_ctrl' in model.params else None)],
-        names=['Metric', 'p_proj', 'p_ctrl']
-        )
-    p_c=model.res.params['p_c'].value
-    p_c_error=model.res.params['p_c'].stderr
-    nu=model.res.params['nu'].value
-    nu_error=model.res.params['nu'].stderr
-    if 'y' in model.res.params:
-        y=model.res.params['y'].value
-        y_error=model.res.params['y'].stderr
-    else:
-        y=None
-        y_error=None
-    new={
-        'p_c':p_c, 
-        'p_c_error':p_c_error,
-        'nu': nu,
-        'nu_error': nu_error,
-        'y': y,
-        'y_error': y_error}
-    new_df=pd.DataFrame(new,index=index)
-    # return  new_df
-    return pd.concat([optimal_model,new_df],axis=0)
+# def add_optimal(optimal_model,model,names=['Metric', 'p_proj', 'p_ctrl']):
+#     import pandas as pd
+#     df_new = pd.DataFrame([model])
+#     p_c_key=frozenset(names)-frozenset(model.params.keys())
 
-def initialize_df():
-    import pandas as pd
-    return pd.DataFrame(
-    columns=['p_c', 'p_c_error', 'nu', 'nu_error', 'y', 'y_error'],
-    index= pd.MultiIndex(levels=[[], [], []], codes=[[], [], []], names=['Metric', 'p_proj', 'p_ctrl'])
-)
+#     index_list=[]
+#     for name in names:
+#         if name in model.params:
+#             index_list.append(model.params[name])
+#         else:
+#             index_list.append(None)
+#     index = pd.MultiIndex.from_tuples([tuple(index_list)],names=names)
+#     p_c=model.res.params['p_c'].value
+#     p_c_error=model.res.params['p_c'].stderr
+#     nu=model.res.params['nu'].value
+#     nu_error=model.res.params['nu'].stderr
+#     if 'y' in model.res.params:
+#         y=model.res.params['y'].value
+#         y_error=model.res.params['y'].stderr
+#     else:
+#         y=None
+#         y_error=None
+#     new={
+#         'p_c':p_c, 
+#         'p_c_error':p_c_error,
+#         'nu': nu,
+#         'nu_error': nu_error,
+#         'y': y,
+#         'y_error': y_error}
+#     new_df=pd.DataFrame(new,index=index)
+#     # return  new_df
+#     return pd.concat([optimal_model,new_df],axis=0)
+
+# def initialize_df(names=['Metric', 'p_proj', 'p_ctrl']):
+#     import pandas as pd
+#     return pd.DataFrame(
+#     columns=['p_c', 'p_c_error', 'nu', 'nu_error', 'y', 'y_error'],
+#     index= pd.MultiIndex(levels=[[]]*len(names), codes=[[]]*len(names), names=names)
+# )
+
+class optimal_df:
+    def __init__(self,names=['Metrics', 'p_proj', 'p_ctrl']):
+        import pandas as pd
+        self.names=names
+        self.opt_df=pd.DataFrame(
+                columns=['p_c', 'p_c_error', 'nu', 'nu_error', 'y', 'y_error'],
+                index= pd.MultiIndex(levels=[[]]*len(names), codes=[[]]*len(names), names=names)
+            )
+
+    def add_optimal(self,model):
+        import pandas as pd
+        df_new = pd.DataFrame([model])
+        p_c_key=frozenset(self.names)-frozenset(model.params.keys())
+
+        index_list=[]
+        for name in self.names:
+            if name in model.params:
+                index_list.append(model.params[name])
+            else:
+                index_list.append(None)
+        index = pd.MultiIndex.from_tuples([tuple(index_list)],names=self.names)
+        p_c=model.res.params['p_c'].value
+        p_c_error=model.res.params['p_c'].stderr
+        nu=model.res.params['nu'].value
+        nu_error=model.res.params['nu'].stderr
+        if 'y' in model.res.params:
+            y=model.res.params['y'].value
+            y_error=model.res.params['y'].stderr
+        else:
+            y=None
+            y_error=None
+        new={
+            'p_c':p_c, 
+            'p_c_error':p_c_error,
+            'nu': nu,
+            'nu_error': nu_error,
+            'y': y,
+            'y_error': y_error}
+        new_df=pd.DataFrame(new,index=index)
+        self.opt_df=pd.concat([self.opt_df,new_df],axis=0)
+    
+    # def delete_from_last(self,loc):
+    #     total=np.arange(len(self.opt_df))
+    #     self.opt_df=self.opt_df.iloc([i for i in total if i not in loc])
+        

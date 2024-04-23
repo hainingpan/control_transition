@@ -39,7 +39,7 @@ def run_tensor(inputs):
         SA_list=torch.zeros((T_max+1,ensemble), device='cuda',dtype=dtype)
         SA_list[0]=ct.von_Neumann_entropy_pure([ct.L])[:,0]
 
-    for T_idx in tqdm(range(T_max)):
+    for T_idx in tqdm(range(T_max),total=T_max):
         ct.random_control(p_ctrl=p_ctrl,p_proj=p_proj)
         torch.cuda.empty_cache()
 

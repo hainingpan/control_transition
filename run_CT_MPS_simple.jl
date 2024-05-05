@@ -60,11 +60,11 @@ function main()
     # args = parse_my_args()
 
     # L_list = 8:2:10
-    L_list = 8:2:16
+    L_list = [10,20,30,40]
     # p_list = 0.0:0.5:1.0
-    p_list = 0.0:0.05:1.0
+    p_list = 0.5:0.1:1.0
     seed_list = 1:2000
-    ancilla_list = [0, 1]
+    ancilla_list = [0]
 
     O_map = zeros(length(L_list), length(p_list), length(seed_list), length(ancilla_list))
     EE_map = zeros(length(L_list), length(p_list), length(seed_list), length(ancilla_list))
@@ -98,4 +98,4 @@ end
 
 # isdefined(Main, :PROGRAM_FILE) && abspath(PROGRAM_FILE) == @__FILE__ && main()
 
-# julia --sysimage ~/.julia/sysimages/sys_itensors.so run_CT_MPS.jl --p 1 --L 8 --seed 0 --ancilla 0
+# julia -t 20 --sysimage ~/.julia/sysimages/sys_itensors.so run_CT_MPS_simple.jl

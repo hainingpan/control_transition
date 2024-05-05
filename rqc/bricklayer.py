@@ -36,6 +36,7 @@ class bricklayer:
     def U_tensor(self,vec,i,rng):
         '''Haar random unitary, applies to (i,(i+1)%L)'''
         U_4=U(4,rng).reshape((2,)*4)
+        print(U_4)
         if vec.ndim != (2,)*self.L:
             vec=vec.reshape((2,)*self.L)
         sites_list=np.arange(self.L)

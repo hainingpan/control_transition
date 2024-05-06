@@ -25,8 +25,9 @@ def convert_to_fraction(fraction_str):
 
 def run_tensor(inputs):
     L,p_ctrl,p_proj,xj,complex128,seed,ancilla,ensemble,add_x,no_feedback=inputs
-    ct=CT_tensor(L=L,seed=seed,xj=xj,gpu=True,complex128=complex128,_eps=1e-5,ensemble=ensemble,ancilla=ancilla,add_x=add_x,feedback=(not no_feedback),x0=0)
-    T_max=ct.L**2//2 if ancilla else 2*ct.L**2
+    
+    ct=CT_tensor(L=L,seed=seed,xj=xj,gpu=True,complex128=complex128,_eps=1e-5,ensemble=ensemble,ancilla=ancilla,add_x=add_x,feedback=(not no_feedback),x0=None if ancilla else 0)
+    T_max=2*ct.L**2
     dtype=torch.float64 if complex128 else torch.float32
     if not ancilla:
         O_list=torch.zeros((T_max+1,ensemble), device='cuda',dtype=dtype)
@@ -103,7 +104,7 @@ if __name__=="__main__":
         O_map,EE_map,TMI_map=rs[:,:,:,0,:,:],rs[:,:,:,1,:,:],rs[:,:,:,2,:,:]
         save_dict={"O":O_map,"EE":EE_map,"TMI":TMI_map,"args":args}
     else:
-        rs=results.reshape((L_list.shape[0],p_ctrl_list.shape[0],p_proj_list.shape[0],1,L_list[0]**2//2+1,args.es))
+        rs=results.reshape((L_list.shape[0],p_ctrl_list.shape[0],p_proj_list.shape[0],1,2*L_list[0]**2+1,args.es))
         SA_map=rs[:,:,:,0,:,:]
         save_dict={"SA":SA_map,"args":args}
 

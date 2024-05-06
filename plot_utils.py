@@ -231,7 +231,8 @@ def convert_pd_0(data_dict,names,threshold):
 
 def entropy(sv,threshold,n=0):
     """compute n-th Renyi entropy from the singular value, the first axis is the ensemble and the second axis all singular value"""
-    from torch import log
+    # from torch import log
+    from numpy import log
     if n==0:
         return log((sv>threshold).sum(axis=1))
     else:

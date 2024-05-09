@@ -9,3 +9,4 @@
 *.hdf5
 *.json
 *.sub
+Fig/*

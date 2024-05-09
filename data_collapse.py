@@ -151,7 +151,7 @@ class DataCollapse:
         self.y_i_minus_irrelevant=self.y_i-np.einsum('ij,ik,kj->j',self.phi_1_,self.a[:,1:],self.phi_2_[1:,:])
         return res
     
-    def loss_with_drift_GSL(self,p_c,nu,y,n1,n2):
+    def loss_with_drift_GLS(self,p_c,nu,y,n1,n2):
         x_i=(self.p_i-p_c)*(self.L_i)**(1/nu)
         ir_i=self.L_i**(-y) # irrelevant scaling
         j1,j2=np.meshgrid(np.arange(n1+1),np.arange(n2+1),indexing='ij')
@@ -165,7 +165,7 @@ class DataCollapse:
         return (self.y_i-self.y_i_fitted)/self.d_i
 
     
-    def datacollapse_with_drift_GSL(self,n1,n2,p_c=None,nu=None,y=None,**kwargs):
+    def datacollapse_with_drift_GLS(self,n1,n2,p_c=None,nu=None,y=None,**kwargs):
         """fit the coefficient of the taylor expansion of the scaling function, using generalized least square"""
         from lmfit import minimize, Parameters
 
@@ -175,7 +175,7 @@ class DataCollapse:
         params.add('y',value=y,min=0)
 
         def residual(params):
-            return self.loss_with_drift_GSL(params['p_c'],params['nu'],params['y'],n1,n2)
+            return self.loss_with_drift_GLS(params['p_c'],params['nu'],params['y'],n1,n2)
         res=minimize(residual,params,**kwargs)
         self.p_c=res.params['p_c'].value
         self.nu=res.params['nu'].value
@@ -280,7 +280,7 @@ def grid_search(n1_list,n2_list,p_c,nu,y,verbose=False,**kwargs):
             print(n1,n2)
         dc=DataCollapse(**kwargs)
         try:
-            res0=dc.datacollapse_with_drift_GSL(n1=n1,n2=n2,p_c=p_c,nu=nu,y=y,)
+            res0=dc.datacollapse_with_drift_GLS(n1=n1,n2=n2,p_c=p_c,nu=nu,y=y,)
         except:
             print(f'Fitting Failed for (n1={n1},n2={n2})')
         model_dict[(n1,n2)]=dc
@@ -334,12 +334,12 @@ def plot_chi2_ratio(model_dict,L1=False):
     ax2.set_ylabel('Irrelevant contribution')
     ax2.fill_between(n1_list,0.,0.1,alpha=0.2,color='orange')
 
-def extrapolate_fitting(data,params,p_range,Lmin=12,Lmax=24,nu=1.3,p_c=0.5,threshold=(-1,1)):
+def extrapolate_fitting(data,params,p_range,p_,L_,Lmin=12,Lmax=24,nu=1.3,p_c=0.5,threshold=(-1,1)):
     from tqdm import tqdm
     dc={}
     for key,val in tqdm(data.items()):
         if threshold[0]<key<threshold[1]:
-            dc[key]=DataCollapse(df=val,params=params,Lmin=Lmin,Lmax=Lmax,p_range=p_range,p_dim=2)
+            dc[key]=DataCollapse(df=val,params=params,Lmin=Lmin,Lmax=Lmax,p_range=p_range,p_=p_,L_=L_)
             dc[key].datacollapse(nu=nu,p_c=p_c,)
     return dc
 
@@ -408,3 +408,10 @@ class optimal_df:
     #     total=np.arange(len(self.opt_df))
     #     self.opt_df=self.opt_df.iloc([i for i in total if i not in loc])
         
+def bootstrapping(df,params,p_,L_,p_range,nu,p_c,rng=0,Lmin=None,Lmax=None,):
+    rng=np.random.default_rng(rng)
+    df_small=df.xs(params.values(),level=list(params.keys()),drop_level=False)
+    df_resample=df_small.applymap(lambda x: rng.choice(x,size=len(x),replace=True))
+    dc=DataCollapse(df=df_resample,params=params,Lmin=Lmin,Lmax=Lmax,p_range=p_range,p_=p_,L_=L_)
+    dc.datacollapse(nu=nu,p_c=p_c,)
+    return dc

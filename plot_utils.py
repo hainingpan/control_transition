@@ -1,5 +1,6 @@
 import os
 import torch
+import numpy as np
 def load_json(fn):
     import json
     with open(fn, "r") as file:
@@ -213,7 +214,7 @@ def convert_pd_0(data_dict,names,threshold):
         elif 'EE' == key[0]:
             params=key[1:]
             if ('EE',)+params not in data_dict_0:
-                data_dict_0[('EE',)+params]=entropy(data_dict[('EE',)+params],threshold,n=0).tolist()
+                data_dict_0[('EE',)+params]=entropy(data_dict[('EE',)+params],threshold,n=0)
         elif 'TMI' in key[0]:
             params=key[1:]
             if ('TMI',)+params not in data_dict_0:
@@ -225,16 +226,14 @@ def convert_pd_0(data_dict,names,threshold):
                     S_AC=data_dict[('TMI_S_AC',)+params],
                     S_BC=data_dict[('TMI_S_BC',)+params],
                     S_ABC=data_dict[('TMI_S_ABC',)+params],
-                    threshold=threshold,n=0).tolist()
+                    threshold=threshold,n=0)
     df=convert_pd(data_dict_0,names)
     return df
 
 def entropy(sv,threshold,n=0):
     """compute n-th Renyi entropy from the singular value, the first axis is the ensemble and the second axis all singular value"""
-    # from torch import log
-    from numpy import log
     if n==0:
-        return log((sv>threshold).sum(axis=1))
+        return np.log(np.count_nonzero((sv>threshold),axis=1))
     else:
         raise NotImplementedError("Renyi entropy for n>0 is not yet implemented")
 

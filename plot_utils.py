@@ -214,11 +214,12 @@ def convert_pd_0(data_dict,names,threshold):
         elif 'EE' == key[0]:
             params=key[1:]
             if ('EE',)+params not in data_dict_0:
-                data_dict_0[('EE',)+params]=entropy(data_dict[('EE',)+params],threshold,n=0)
+                EE=entropy(data_dict[('EE',)+params],threshold,n=0)
+                data_dict_0[('EE',)+params]=EE[~np.isnan(EE)]
         elif 'TMI' in key[0]:
             params=key[1:]
             if ('TMI',)+params not in data_dict_0:
-                data_dict_0[('TMI',)+params]=tripartite_mutual_information(
+                TMI=tripartite_mutual_information(
                     S_A=data_dict[('TMI_S_A',)+params],
                     S_B=data_dict[('TMI_S_B',)+params],
                     S_C=data_dict[('TMI_S_C',)+params],
@@ -227,19 +228,36 @@ def convert_pd_0(data_dict,names,threshold):
                     S_BC=data_dict[('TMI_S_BC',)+params],
                     S_ABC=data_dict[('TMI_S_ABC',)+params],
                     threshold=threshold,n=0)
+                data_dict_0[('TMI',)+params]=TMI[~np.isnan(TMI)]
     df=convert_pd(data_dict_0,names)
     return df
 
-def entropy(sv,threshold,n=0):
-    """compute n-th Renyi entropy from the singular value, the first axis is the ensemble and the second axis all singular value"""
+def entropy(sv,threshold,n=0,postprocess='drop'):
+    """compute n-th Renyi entropy from the singular value, the first axis is the ensemble and the second axis all singular value
+    postprocess: 
+    None: do nothing
+    drop: drop non-normalized state
+    enforce: set this to be 1
+    """
     if n==0:
-        return np.log(np.count_nonzero((sv>threshold),axis=1))
+        S0=np.log(np.count_nonzero((sv>threshold),axis=1))
+        # handle some issue that singular values are not normalized, i.e., sum(sv**2) != 1
+        if postprocess is None:
+            mask=slice(None)
+        elif postprocess == 'drop':
+            mask=(np.abs(np.sum(sv**2,axis=1)-1)>5.5e-15)
+            S0[mask]=np.nan
+        elif postprocess == 'enforce':
+            # technically this is not correct
+            mask=(np.abs(np.sum(sv**2,axis=1)-1)>5.5e-15)
+            S0[mask]=0
+        return S0
     else:
         raise NotImplementedError("Renyi entropy for n>0 is not yet implemented")
 
-def tripartite_mutual_information(S_A,S_B,S_C,S_AB,S_AC,S_BC,S_ABC,threshold, n=0):
+def tripartite_mutual_information(S_A,S_B,S_C,S_AB,S_AC,S_BC,S_ABC,threshold, n=0,postprocess='drop'):
     if n==0:
-        return entropy(S_A,threshold,n=0)+entropy(S_B,threshold,n=0)+entropy(S_C,threshold,n=0)-entropy(S_AB,threshold,n=0)-entropy(S_AC,threshold,n=0)-entropy(S_BC,threshold,n=0)+entropy(S_ABC,threshold,n=0)
+        return entropy(S_A,threshold,n=0,postprocess=postprocess)+entropy(S_B,threshold,n=0,postprocess=postprocess)+entropy(S_C,threshold,n=0,postprocess=postprocess)-entropy(S_AB,threshold,n=0,postprocess=postprocess)-entropy(S_AC,threshold,n=0,postprocess=postprocess)-entropy(S_BC,threshold,n=0,postprocess=postprocess)+entropy(S_ABC,threshold,n=0,postprocess=postprocess)
     else:
         raise NotImplementedError("tripartite MI for n>0 is not yet implemented")
 

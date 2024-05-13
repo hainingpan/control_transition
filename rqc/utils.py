@@ -20,7 +20,7 @@ def monitor(func,):
         return result
     return wrapper
 
-def dec2bin(x,L):
+def dec2bin(x,L,base=2):
     """convert a float number x in [0,1) to the binary form with maximal length of L, where the leading 0 as integer part is truncated. Example, 1/3 is 010101...
 
     Parameters
@@ -36,7 +36,10 @@ def dec2bin(x,L):
         array of binary form
     """
     assert 0<=x<1, f'{x} is not in [0,1)'
-    return int(x*(1<<L))
+    if base == 2:
+        return int(x*(1<<L))
+    else:
+        return int(x*(base**L))
 
 def U(n,rng=None,size=1):
     """Calculate Haar random unitary matrix of dimension `n`. The method is based on QR decomposition of a random matrix with Gaussian entries.

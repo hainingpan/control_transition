@@ -441,10 +441,11 @@ class CT_tensor:
             driver=None
         subregion=list(subregion)
         not_subregion=[i for i in range(self.L_T) if i not in subregion]
+        self.normalize_(vec_)
         vec=vec.permute([self.L_T,self.L_T+1]+subregion+not_subregion)
         vec_=vec.contiguous().view((self.rng.shape[0] if self.ensemble is None else self.ensemble,self.ensemble_m,2**len(subregion),2**len(not_subregion)))
         # There might be a problem here: the normalization of all sv, i.e., sum(sv**2)=1, may need to check, this may not affect n=1, because, 0log0 = 1 log 1 =0 anyway. but it has a singular effect on n=0. An post-workaround is to test the norm, if norm >1 , which is problematic, then either only keep the first one, or drop it
-        self.normalize_(vec_)
+        
         S=torch.linalg.svdvals(vec_,driver=driver)
         if sv:
             return S

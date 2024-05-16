@@ -1,14 +1,22 @@
 import os
 import torch
 import numpy as np
+import json
+import orjson
+import zipfile
 def load_json(fn):
-    import json
-    with open(fn, "r") as file:
-        data = json.load(file)
+    # with open(fn, "r") as file:
+    #     data = json.load(file)
+    with open(fn, "rb") as file:
+        file_content = file.read()
+        data = orjson.loads(file_content)
     return data
 
+def load_zip_json(fn,z):
+    return orjson.loads(z.open(fn).read())
+
+import pickle
 def load_pickle(fn):
-    import pickle
     with open(fn, 'rb') as f:
         data = pickle.load(f)
     return data
@@ -103,12 +111,16 @@ def add_to_dict(data_dict,data,filename,fixed_params_keys={},skip_keys=set(['off
                     parse_global(data_dict,data,metric,iteration)
 
         elif filename.split('.')[-1] == 'json':
-            params=(metric,)+tuple(val for key,val in iterator.items() if key != 'seed' and key not in fixed_params_keys and key not in skip_keys)
-
-            if params in data_dict:
-                data_dict[params].append(data[metric])
+            if '_DW' in filename or '_T' in filename:
+                parse_json_T(data_dict,data,metric,iterator,fixed_params_keys,skip_keys)
             else:
-                data_dict[params]=[data[metric]]
+                parse_json(data_dict,data,metric,iterator,fixed_params_keys,skip_keys)
+            # params=(metric,)+tuple(val for key,val in iterator.items() if key != 'seed' and key not in fixed_params_keys and key not in skip_keys)
+
+            # if params in data_dict:
+            #     data_dict[params].append(data[metric])
+            # else:
+            #     data_dict[params]=[data[metric]]
 
 def parse_T(data_dict,data,metric,iteration):
     """parse data as a function of time T"""
@@ -154,7 +166,28 @@ def parse_global(data_dict,data,metric,iteration):
     observations=data[metric][L_idx,p_ctrl_idx,p_proj_idx,p_global_idx]
     params=(metric,L,p_ctrl,p_proj,p_global)
     add_attach_dict(data_dict,params,observations)
-    
+
+def parse_json(data_dict,data,metric,iterator,fixed_params_keys,skip_keys):
+    params=(metric,)+tuple(val for key,val in iterator.items() if key != 'seed' and key not in fixed_params_keys and key not in skip_keys)
+    if params in data_dict:
+        # data_dict[params].append(data[metric])
+        data_dict[params]=np.vstack([data_dict[params],data[metric]])
+    else:
+        data_dict[params]=np.array(data[metric])
+
+from collections import defaultdict
+def parse_json_T(data_dict,data,metric,iterator,fixed_params_keys,skip_keys):
+    # params=(metric,)+tuple(val for key,val in iterator.items() if key != 'seed' and key not in fixed_params_keys and key not in skip_keys)
+    params=(metric,iterator['L'],iterator['p_ctrl'],iterator['p_proj'])
+    observations=data[metric]
+    T_f=len(observations)
+    for T_idx in range(T_f):
+        params_T=(*params, T_idx)
+        observations_T_idx=observations[T_idx]
+        if params_T in data_dict:
+            data_dict[params_T].append(observations_T_idx)
+        else:
+            data_dict[params_T]=[observations_T_idx]
 
 def add_attach_dict(data_dict,params,observations,axis=0,drop_nan=True):
     """if not in dict, add it
@@ -276,6 +309,7 @@ def generate_params(
     data_dict_file=None,
     fn_dir='auto',
     exist=False,
+    zip_fn=None,
 ):
     """Generate params to running and loading
 
@@ -339,12 +373,23 @@ def generate_params(
             if data_dict_fn.split('.')[-1] == 'pickle':
                 with open(data_dict_fn,'rb') as f:
                     data_dict=pickle.load(f)
+            # if data_dict_fn.split('.')[-1] == 'json':
+            #     with open(data_dict_fn,'rb') as f:
+            #         data_dict=orjson.loads(f.read())
+            #     data_dict['fn']=set(data_dict['fn'])
         else:
             print(f'Creating new data_dict {data_dict_fn}')
             data_dict={'fn':set()}
 
+    if zip_fn is not None:
+        z=zipfile.ZipFile(zip_fn, 'r')
+        
+
     if load:
-        all_fns=set(os.listdir(fn_dir))
+        if zip_fn is None:
+            all_fns=set(os.listdir(fn_dir))
+        else:
+            all_fns=set(z.namelist())
     else:
         if filelist is None:
             all_fns=set(os.listdir(fn_dir))
@@ -362,16 +407,16 @@ def generate_params(
                 fn_fullpath=os.path.join(fn_dir,fn)
                 if fn in (all_fns):
                     try:
-                        data=load_data(fn_fullpath)
+                        if zip_fn is None:
+                            data=load_data(fn_fullpath)
+                        else:
+                            data=load_data(fn,z)
                     except:
                         print(f'Error loading {fn}')
                         continue
                     add_to_dict(data_dict,data,fn,fixed_params_keys=fixed_params.keys())
         else:
-            if filelist is None:
-                file_exist = fn in all_fns
-            else:
-                file_exist = fn in all_fns
+            file_exist = fn in all_fns
             
             if not file_exist:
                 params_text.append(eval(f"f'{input_params_template}'", {},  {**locals(),**dict_params}))
@@ -382,14 +427,20 @@ def generate_params(
             if data_dict_fn.split('.')[-1] == 'pickle':
                 with open(data_dict_fn,'wb') as f:
                     pickle.dump(data_dict,f)
+            # if data_dict_fn.split('.')[-1] == 'json':
+            #     data_dict['fn']=list(data_dict['fn'])
+            #     with open(data_dict_fn,'wb') as f:
+            #         f.write(orjson.dumps(data_dict))
         return data_dict
     else:
         if filename is not None:
             with open(filename,'a') as f:
                 f.write('\n'.join(params_text)+'\n')
         return params_text
-    
-    
+    if zip_fn is not None:
+        zip_fn.close()
+
+
 import numpy as np
 def plot_line(
     df,

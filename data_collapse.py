@@ -12,25 +12,15 @@ class DataCollapse:
         self.p_=p_
         self.L_=L_
         self.adaptive_func=adaptive_func
-        # if p_dim==1:
-        #     self.p_='p'
-        # elif p_dim==2:
-        #     if 'p_proj' in params:
-        #         self.p_='p_ctrl'
-        #     else:
-        #         self.p_='p_proj'
-        # elif p_dim==3:
-        #     if 'p_global' in params:
-        #         self.p_='p_ctrl'
-        #     else:
-        #         self.p_='p_global'
 
-        # self.p_='p' if p_dim==1 else ('p_ctrl' if 'p_proj' in params else 'p_proj') 
         self.df=self.load_dataframe(df,params)
         self.L_i,self.p_i,self.d_i,self.y_i = self.load_data()
     
     def load_dataframe(self,df,params,):
-        df=df.xs(params.values(),level=list(params.keys()))['observations']
+        if params is not None:
+            df=df.xs(params.values(),level=list(params.keys()))['observations']
+        else:
+            df=df['observations']
         df=df[(df.index.get_level_values(self.L_)<=self.Lmax) & (self.Lmin<=df.index.get_level_values(self.L_))]
         if self.adaptive_func is None:
             df=df[(df.index.get_level_values(self.p_)<=self.p_range[1]) & (self.p_range[0]<=df.index.get_level_values(self.p_))]
@@ -38,7 +28,7 @@ class DataCollapse:
             val=self.adaptive_func(df.index.get_level_values(self.p_),df.index.get_level_values(self.L_))
             df=df[(val <=self.p_range[1]) & (self.p_range[0]<=val)]
             
-        return df.sort_index(level=["L",self.p_])
+        return df.sort_index(level=[self.L_,self.p_])
 
     def load_data(self):
         L_i=(self.df.index.get_level_values(self.L_).values)
@@ -91,12 +81,12 @@ class DataCollapse:
         
         return (self.y_i-self.y_i_fitted)/self.d_i
     
-    def datacollapse(self,p_c=None,nu=None,p_c_vary=True,nu_vary=True,nu_range=(.5,2),**kwargs):
+    def datacollapse(self,p_c=None,nu=None,p_c_vary=True,nu_vary=True,nu_range=(.5,2),p_c_range=(0,1),**kwargs):
         """data collapse without drift, x_i=(p_i-p_c)L^{1/nu}, and try to make x_i vs y_i collapse to a smooth line"""
         from lmfit import minimize, Parameters
 
         params=Parameters()
-        params.add('p_c',value=p_c,min=0,max=1,vary=p_c_vary)
+        params.add('p_c',value=p_c,min=p_c_range[0],max=p_c_range[1],vary=p_c_vary)
         params.add('nu',value=nu,min=nu_range[0],max=nu_range[1],vary=nu_vary)
         def residual(params):
             p_c,nu=params['p_c'],params['nu']
@@ -108,12 +98,12 @@ class DataCollapse:
         self.res=res
         return res
 
-    def datacollapse_with_drift(self,m1,m2,n1,n2,p_c=None,nu=None,y=None,b1=None,b2=None,a=None,p_c_vary=True,nu_vary=True,y_vary=True,seed=None,**kwargs):
+    def datacollapse_with_drift(self,m1,m2,n1,n2,p_c=None,nu=None,y=None,b1=None,b2=None,a=None,p_c_vary=True,nu_vary=True,p_c_range=(0,1),y_vary=True,seed=None,**kwargs):
         from lmfit import minimize, Parameters
 
         params=Parameters()
-        params.add('p_c',value=p_c,min=0,max=1,vary=p_c_vary)
-        params.add('nu',value=nu,min=0,max=2,vary=nu_vary)
+        params.add('p_c',value=p_c,min=p_c_range[0],max=p_c_range[1],vary=p_c_vary)
+        params.add('nu',value=nu,min=0,max=3,vary=nu_vary)
         params.add('y',value=y,min=0,vary=y_vary)
         rng=np.random.default_rng(seed)
         if b1 is None:
@@ -165,13 +155,13 @@ class DataCollapse:
         return (self.y_i-self.y_i_fitted)/self.d_i
 
     
-    def datacollapse_with_drift_GLS(self,n1,n2,p_c=None,nu=None,y=None,**kwargs):
+    def datacollapse_with_drift_GLS(self,n1,n2,p_c=None,nu=None,y=None,p_c_range=(0,1),nu_range=(0,2),p_c_vary=True,nu_vary=True,**kwargs):
         """fit the coefficient of the taylor expansion of the scaling function, using generalized least square"""
         from lmfit import minimize, Parameters
 
         params=Parameters()
-        params.add('p_c',value=p_c,min=0,max=1)
-        params.add('nu',value=nu,min=0,max=2)
+        params.add('p_c',value=p_c,min=p_c_range[0],max=p_c_range[1],vary=p_c_vary)
+        params.add('nu',value=nu,min=nu_range[0],max=nu_range[1],vary=nu_vary)
         params.add('y',value=y,min=0)
 
         def residual(params):
@@ -200,8 +190,8 @@ class DataCollapse:
         # x_i=self.p_i
         if ax is None:
             fig,ax = plt.subplots()
-        L_list=self.df.index.get_level_values('L').unique().sort_values().values
-        idx_list=[0]+(np.cumsum([self.df.xs(key=L,level='L').shape[0] for L in L_list])).tolist()
+        L_list=self.df.index.get_level_values(self.L_).unique().sort_values().values
+        idx_list=[0]+(np.cumsum([self.df.xs(key=L,level=self.L_).shape[0] for L in L_list])).tolist()
         L_dict={L:(start_idx,end_idx) for L,start_idx,end_idx in zip(L_list,idx_list[:-1],idx_list[1:])}
         # color_iter=iter(plt.cm.rainbow(np.linspace(0,1,len(L_list))))
         color_iter = iter(plt.cm.Blues(0.4+0.6*(i/L_list.shape[0])) for i in range(L_list.shape[0]))
@@ -232,28 +222,28 @@ class DataCollapse:
         ax.set_ylabel(r'$y_i$')
         if drift:
             if not driftcollapse:
-                ax.set_xlabel(r'$p_i$')
+                ax.set_xlabel(f'${{{self.p_}}}_i$')
                 # TODO: check whether errorbar exists before
                 try:
-                    ax.set_title(rf'$p_c$={self.p_c:.3f}$\pm${self.res.params["p_c"].stderr:.3f},$\nu$={self.nu:.3f}$\pm${self.res.params["nu"].stderr:.3f},$y$= {self.y:.3f}$\pm${self.res.params["y"].stderr:.3f}')
+                    ax.set_title(rf'${{{self.p_}}}_c$={self.p_c:.3f}$\pm${self.res.params["p_c"].stderr:.3f},$\nu$={self.nu:.3f}$\pm${self.res.params["nu"].stderr:.3f},$y$= {self.y:.3f}$\pm${self.res.params["y"].stderr:.3f}')
                 except:
-                    ax.set_title(rf'$p_c$={self.p_c:.3f},$\nu$={self.nu:.3f},$y$= {self.y:.3f}')
+                    ax.set_title(rf'${{{self.p_}}}_c$={self.p_c:.3f},$\nu$={self.nu:.3f},$y$= {self.y:.3f}')
 
             else:
                 ax.set_xlabel(r'$x_i$')
                 try:
-                    ax.set_title(rf'$p_c$={self.p_c:.3f}$\pm${self.res.params["p_c"].stderr:.3f},$\nu$={self.nu:.3f}$\pm${self.res.params["nu"].stderr:.3f},$y$= {self.y:.3f}$\pm${self.res.params["y"].stderr:.3f}')
+                    ax.set_title(rf'${{{self.p_}}}_c$={self.p_c:.3f}$\pm${self.res.params["p_c"].stderr:.3f},$\nu$={self.nu:.3f}$\pm${self.res.params["nu"].stderr:.3f},$y$= {self.y:.3f}$\pm${self.res.params["y"].stderr:.3f}')
                 except:
-                    ax.set_title(rf'$p_c$={self.p_c:.3f},$\nu$={self.nu:.3f},$y$= {self.y:.3f}')
+                    ax.set_title(rf'${{{self.p_}}}_c$={self.p_c:.3f},$\nu$={self.nu:.3f},$y$= {self.y:.3f}')
 
                 ax.set_ylabel(r'$y_i-y_{irre}$')
         else:
-            ax.set_xlabel(r'$(p_i-p_c)L^{1/\nu}$')
+            ax.set_xlabel(f'$({{{self.p_}}}_i-{{{self.p_}}}_c){{{self.L_}}}^{{1/\\nu}}$')
             # ax.set_title(rf'$p_c={self.p_c:.3f},\nu={self.nu:.3f}$')
             try:
-                ax.set_title(rf'$p_c$={self.p_c:.3f}$\pm${self.res.params["p_c"].stderr:.3f},$\nu$={self.nu:.3f}$\pm${self.res.params["nu"].stderr:.3f}')
+                ax.set_title(rf'${{{self.p_}}}_c$={self.p_c:.3f}$\pm${self.res.params["p_c"].stderr:.3f},$\nu$={self.nu:.3f}$\pm${self.res.params["nu"].stderr:.3f}')
             except:
-                ax.set_title(rf'$p_c$={self.p_c:.3f},$\nu$={self.nu:.3f}')
+                ax.set_title(rf'${{{self.p_}}}_c$={self.p_c:.3f},$\nu$={self.nu:.3f}')
         
         ax.legend()
         ax.grid('on')
@@ -262,7 +252,7 @@ class DataCollapse:
         # print(f'{self.params["Metrics"]}_Scaling_L({L_list[0]},{L_list[-1]})_adder({adder[0]}-{adder[1]}).png')
 
 
-def grid_search(n1_list,n2_list,p_c,nu,y,verbose=False,**kwargs):
+def grid_search(n1_list,n2_list,p_c,nu,y,p_c_range,nu_range,verbose=False,**kwargs):
     """grid search for the best n1 and n2
     provided arguments: 
     df=df_0_1
@@ -280,7 +270,7 @@ def grid_search(n1_list,n2_list,p_c,nu,y,verbose=False,**kwargs):
             print(n1,n2)
         dc=DataCollapse(**kwargs)
         try:
-            res0=dc.datacollapse_with_drift_GLS(n1=n1,n2=n2,p_c=p_c,nu=nu,y=y,)
+            res0=dc.datacollapse_with_drift_GLS(n1=n1,n2=n2,p_c=p_c,nu=nu,y=y,p_c_range=p_c_range,nu_range=nu_range,)
         except:
             print(f'Fitting Failed for (n1={n1},n2={n2})')
         model_dict[(n1,n2)]=dc
@@ -408,10 +398,10 @@ class optimal_df:
     #     total=np.arange(len(self.opt_df))
     #     self.opt_df=self.opt_df.iloc([i for i in total if i not in loc])
         
-def bootstrapping(df,params,p_,L_,p_range,nu,p_c,rng=0,Lmin=None,Lmax=None,):
+def bootstrapping(df,params,p_,L_,p_range,nu,p_c,rng=0,Lmin=None,Lmax=None,size=None,replace=True,method='leastsq',p_c_vary=True,nu_range=(.5,2),**kwargs):
     rng=np.random.default_rng(rng)
     df_small=df.xs(params.values(),level=list(params.keys()),drop_level=False)
-    df_resample=df_small.applymap(lambda x: rng.choice(x,size=len(x),replace=True))
-    dc=DataCollapse(df=df_resample,params=params,Lmin=Lmin,Lmax=Lmax,p_range=p_range,p_=p_,L_=L_)
-    dc.datacollapse(nu=nu,p_c=p_c,)
+    df_resample=df_small.applymap(lambda x: rng.choice(x,size=len(x) if size is None else min(size,len(x)),replace=replace))
+    dc=DataCollapse(df=df_resample,params=params,Lmin=Lmin,Lmax=Lmax,p_range=p_range,p_=p_,L_=L_,**kwargs)
+    dc.datacollapse(nu=nu,p_c=p_c,method=method,p_c_vary=p_c_vary,nu_range=nu_range)
     return dc

@@ -45,20 +45,26 @@ def convert_x0(xj,L):
 
 def run_tensor(inputs,datasets,metric_datasets):
 
-    (L_idx,L),(p_ctrl_idx,p_ctrl),(p_proj_idx,p_proj),xj,complex128,seed,ancilla,ensemble,save_T,x0=inputs
+    (L_idx,L),(p_ctrl_idx,p_ctrl),(p_proj_idx,p_proj),xj,complex128,seed,ancilla,ensemble,save_T,save_DW,x0=inputs
     ct=CT_tensor(L=L,seed=seed,xj=xj,gpu=True,complex128=complex128,_eps=1e-5,ensemble=ensemble,ancilla=ancilla,x0=x0)
     T_max=ct.L**2//2 if ancilla else 2*ct.L**2
     idx=0
     dw=convert_bitstring_to_dw(L,ZZ=False if 0 in xj else True)
     if save_T:
-        datasets[L][p_ctrl_idx,p_proj_idx,idx,0]=torch.einsum(torch.abs(ct.vec)**2,[...,0,1],dw,[...],[0,1]).cpu().numpy()
-        datasets[L][p_ctrl_idx,p_proj_idx,idx,1]=torch.einsum(torch.abs(ct.vec)**2,[...,0,1],dw**2,[...],[0,1]).cpu().numpy()
+        if save_DW:
+            datasets[L][p_ctrl_idx,p_proj_idx,idx,0]=torch.einsum(torch.abs(ct.vec)**2,[...,0,1],dw,[...],[0,1]).cpu().numpy()
+            datasets[L][p_ctrl_idx,p_proj_idx,idx,1]=torch.einsum(torch.abs(ct.vec)**2,[...,0,1],dw**2,[...],[0,1]).cpu().numpy()
+        else:
+            datasets[L][p_ctrl_idx,p_proj_idx,idx]=ct.vec.cpu().numpy()
         idx+=1
     for t_idx in range(T_max):
         ct.random_control(p_ctrl=p_ctrl,p_proj=p_proj)
         if save_T:
-            datasets[L][p_ctrl_idx,p_proj_idx,idx,0]=torch.einsum(torch.abs(ct.vec)**2,[...,0,1],dw,[...],[0,1]).cpu().numpy()
-            datasets[L][p_ctrl_idx,p_proj_idx,idx,1]=torch.einsum(torch.abs(ct.vec)**2,[...,0,1],dw**2,[...],[0,1]).cpu().numpy()
+            if save_DW:
+                datasets[L][p_ctrl_idx,p_proj_idx,idx,0]=torch.einsum(torch.abs(ct.vec)**2,[...,0,1],dw,[...],[0,1]).cpu().numpy()
+                datasets[L][p_ctrl_idx,p_proj_idx,idx,1]=torch.einsum(torch.abs(ct.vec)**2,[...,0,1],dw**2,[...],[0,1]).cpu().numpy()
+            else:
+                datasets[L][p_ctrl_idx,p_proj_idx,idx]=ct.vec.cpu().numpy()
             idx+=1
         elif t_idx==T_max-1:    
             datasets[L][p_ctrl_idx,p_proj_idx,idx]=ct.vec.cpu().numpy()
@@ -91,7 +97,8 @@ if __name__=="__main__":
     parser.add_argument('--x0','-x0',type=float,default=None, help="Initial value in fraction. Using -1 for the initial value of the first domain wall right in the middle of the chain.")
     parser.add_argument('--complex128','-complex128',action='store_true', help="add --complex128 to have precision of complex128")
     parser.add_argument('--ancilla','-ancilla',action='store_true', help="add --ancilla to have ancilla qubit")
-    parser.add_argument('--save_T','-save_T',action='store_true', help="add --save to save the time evolution of the wavefunction")
+    parser.add_argument('--save_T','-save_T',action='store_true', help="add --save_T to save the time evolution of the wavefunction")
+    parser.add_argument('--save_DW','-save_DW',action='store_true', help="add --save_DW to save the domain wall")
 
     args=parser.parse_args()
 
@@ -103,12 +110,16 @@ if __name__=="__main__":
     p_ctrl_list=np.linspace(args.p_ctrl[0],args.p_ctrl[1],int(args.p_ctrl[2]))
     p_proj_list=np.linspace(args.p_proj[0],args.p_proj[1],int(args.p_proj[2]))
     st=time.time()
-    inputs=[((L_idx,L),(p_ctrl_idx,p_ctrl),(p_proj_idx,p_proj),xj,args.complex128,args.seed,args.ancilla,args.es,args.save_T,convert_x0(xj,L) if args.x0 == -1 else args.x0) for L_idx,L in enumerate(L_list) for p_ctrl_idx,p_ctrl in enumerate(p_ctrl_list) for p_proj_idx,p_proj in enumerate(p_proj_list)]
+    inputs=[((L_idx,L),(p_ctrl_idx,p_ctrl),(p_proj_idx,p_proj),xj,args.complex128,args.seed,args.ancilla,args.es,args.save_T,args.save_DW,convert_x0(xj,L) if args.x0 == -1 else args.x0) for L_idx,L in enumerate(L_list) for p_ctrl_idx,p_ctrl in enumerate(p_ctrl_list) for p_proj_idx,p_proj in enumerate(p_proj_list)]
 
-    with h5py.File('CT_En{:d}_pctrl({:.2f},{:.2f},{:.0f})_pproj({:.2f},{:.2f},{:.0f})_L({:d},{:d},{:d})_xj({:s})_seed{:d}{:s}{:s}_wf{:s}.hdf5'.format(args.es,*args.p_ctrl,*args.p_proj,*args.L,args.xj.replace('/','-'),args.seed,'_128' if args.complex128 else '_64','_anc'*args.ancilla,'_T'*args.save_T),'w') as f:
+    with h5py.File('CT_En{:d}_pctrl({:.2f},{:.2f},{:.0f})_pproj({:.2f},{:.2f},{:.0f})_L({:d},{:d},{:d})_xj({:s})_seed{:d}{:s}{:s}_wf{:s}{:s}.hdf5'.format(args.es,*args.p_ctrl,*args.p_proj,*args.L,args.xj.replace('/','-'),args.seed,'_128' if args.complex128 else '_64','_anc'*args.ancilla,'_T'*args.save_T,'_all'*(not args.save_DW)),'w') as f:
         if args.save_T:
-            # Save only first domain wall and it's square (as a function of time)
-            datasets={L:f.create_dataset(f'FDW_{L}',((len(p_ctrl_list),len(p_proj_list),2*L**2+1,2)+(args.es,1)),dtype=float) for L in L_list}
+            if args.save_DW:
+                # Save only first domain wall and it's square (as a function of time)
+                datasets={L:f.create_dataset(f'FDW_{L}',((len(p_ctrl_list),len(p_proj_list),2*L**2+1,2)+(args.es,1)),dtype=float) for L in L_list}
+            else:
+                # Save wavefunction (as a function of time)
+                datasets={L:f.create_dataset(f'wf_{L}',((len(p_ctrl_list),len(p_proj_list),2*L**2+1)+(2,)*L+(args.es,1)),dtype=complex) for L in L_list}
         else:
             # Save only wavefunction (at the end of time evolution)
             datasets={L:f.create_dataset(f'wf_{L}',((len(p_ctrl_list),len(p_proj_list),1)+(2,)*L+(args.es,1)),dtype=complex) for L in L_list}

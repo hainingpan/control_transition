@@ -7,6 +7,7 @@ def run(L):
     save_reduced_dm_swap(f_0,L=L)
 
 if __name__  == "__main__":
-    for L in [10,12,14,16]:
+    for L in [14,16]:
+    # for L in [8,]:
         run(L)
     print('finished')

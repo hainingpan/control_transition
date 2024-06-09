@@ -12,3 +12,8 @@
 *.pyc
 Fig/*
 .ipynb_checkpoints/*
+*.jls
+*.btr
+*.pyc
+*.mem
+*.bak

@@ -17,3 +17,4 @@ Fig/*
 *.pyc
 *.mem
 *.bak
+_ipython-input-*-profile

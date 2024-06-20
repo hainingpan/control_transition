@@ -9,32 +9,35 @@ from opt_einsum import contract
 import dask.array as da
 import torch
 
-def save_reduced_dm(f_0, L,idx_max=21,hdf5=False):
+def save_reduced_dm(f_0, L,idx_max=21,hdf5=False,internal_coherence=False):
     red_dm_list=np.zeros((idx_max,L+1,L+1),dtype=np.float64)
     red_dm_per_list=np.zeros((idx_max,L+1,L+1),dtype=np.float64)
     for idx in tqdm(range(idx_max)):
         rho_av=get_rho_av(f_0,L,idx)
-        red_dm=get_reduced_dm(rho_av)
+        red_dm=get_reduced_dm(rho_av,internal_coherence=internal_coherence)
         red_dm_list[idx]=(red_dm)
-        red_dm_per_list[idx]=(get_reduced_dm_per_basis(red_dm))
+        red_dm_per_list[idx]=(get_reduced_dm_per_basis(red_dm,internal_coherence=internal_coherence))
+    output_fn=f'rho_av_{L}'
+    if internal_coherence:
+        output_fn+='_internal'
     if hdf5:
-        with h5py.File(f'rho_av_{L}.hdf5','w') as f:
+        with h5py.File(output_fn+'.hdf5','w') as f:
             f.create_dataset('red_dm',data=red_dm_list)
             f.create_dataset('red_dm_per',data=red_dm_per_list)
     else:
-        with open(f'rho_av_{L}.pickle','wb') as f:
+        with open(output_fn+'.pickle','wb') as f:
             pickle.dump({'red_dm':red_dm_list,'red_dm_per':red_dm_per_list},f)
 
 
-def save_reduced_dm_swap(f_0, L,s_max=2000,idx_max=21,hdf5=False):
+def save_reduced_dm_swap(f_0, L,s_max=2000,idx_max=21,hdf5=False,internal_coherence=False):
     """ \sum_m p_m  C(\rho_m)"""
 
     red_dm_list=np.zeros((idx_max,L+1,L+1),dtype=np.float64)
     red_dm_per_list=np.zeros((idx_max,L+1,L+1),dtype=np.float64)
     for idx in tqdm(range(idx_max)):
-        red_dm=[get_reduced_dm(get_rho_av(f_0,L,idx,s)) for s in range(s_max)]
+        red_dm=[get_reduced_dm(get_rho_av(f_0,L,idx,s),internal_coherence=internal_coherence) for s in range(s_max)]
         red_dm_list[idx]=np.mean(red_dm,axis=0)
-        red_dm_per_list[idx]=get_reduced_dm_per_basis(red_dm_list[idx])
+        red_dm_per_list[idx]=get_reduced_dm_per_basis(red_dm_list[idx],internal_coherence=internal_coherence)
     if hdf5:
         with h5py.File(f'C_av_{L}_tt.hdf5','w') as f:
             f.create_dataset('red_dm',data=red_dm_list)
@@ -43,16 +46,16 @@ def save_reduced_dm_swap(f_0, L,s_max=2000,idx_max=21,hdf5=False):
         with open(f'C_av_{L}_tt.pickle','wb') as f:
             pickle.dump({'red_dm':red_dm_list,'red_dm_per':red_dm_per_list},f)
 
-def save_reduced_dm_T(f_T, L,T_max=None, idx_max=21,hdf5=False):
+def save_reduced_dm_T(f_T, L,T_max=None, idx_max=21,hdf5=False,internal_coherence=False):
     """ \sum_m p_m  C(\rho_m)"""
     if T_max is None:
         T_max=1+2*L**2
     red_dm_list=np.zeros((idx_max,T_max,L+1,L+1),dtype=np.float64)
     red_dm_per_list=np.zeros((idx_max,T_max,L+1,L+1),dtype=np.float64)
     for idx in tqdm(range(idx_max)):
-        red_dm=np.array([get_reduced_dm(get_rho_av_T(f_T,L=L,i=idx,T=T)) for T in range(T_max)])
+        red_dm=np.array([get_reduced_dm(get_rho_av_T(f_T,L=L,i=idx,T=T),internal_coherence=internal_coherence) for T in range(T_max)])
         red_dm_list[idx]=(red_dm)
-        red_dm_per_list[idx]=np.array([get_reduced_dm_per_basis(rho) for rho in red_dm_list[idx]])
+        red_dm_per_list[idx]=np.array([get_reduced_dm_per_basis(rho,internal_coherence=internal_coherence) for rho in red_dm_list[idx]])
     if hdf5:
         with h5py.File(f'rho_T_av_{L}.hdf5','w') as f:
             f.create_dataset('red_dm',data=red_dm_list)
@@ -61,7 +64,7 @@ def save_reduced_dm_T(f_T, L,T_max=None, idx_max=21,hdf5=False):
         with open(f'rho_T_av_{L}.pickle','wb') as f:
             pickle.dump({'red_dm':red_dm_list,'red_dm_per':red_dm_per_list},f)
 
-def save_reduced_dm_T_seed(f_T, L,seed_range, T_list=None, i_list=None, hdf5=False,bootstrap=False,rng=None,save=True):
+def save_reduced_dm_T_seed(f_T, L,seed_range, T_list=None, i_list=None, hdf5=False,bootstrap=False,rng=None,save=True,internal_coherence=False):
     if T_list is None:
         T_list=range(0,1+2*L**2)
     if i_list is None:
@@ -71,9 +74,9 @@ def save_reduced_dm_T_seed(f_T, L,seed_range, T_list=None, i_list=None, hdf5=Fal
     red_dm_per_list=np.zeros((len(i_list),len(T_list),L+1,L+1),dtype=np.float64)
     for i_idx,i in (enumerate(i_list)):
     # for i_idx,i in tqdm(enumerate(i_list)):
-        red_dm=np.array([get_reduced_dm(get_rho_av_T_seed(f_T,L=L,i=i,T=T,seed_range=seed_range,bootstrap=bootstrap,rng=rng)) for T_idx,T in enumerate(T_list)])
+        red_dm=np.array([get_reduced_dm(get_rho_av_T_seed(f_T,L=L,i=i,T=T,seed_range=seed_range,bootstrap=bootstrap,rng=rng),internal_coherence=internal_coherence) for T_idx,T in enumerate(T_list)])
         red_dm_list[i_idx]=(red_dm)
-        red_dm_per_list[i_idx]=np.array([get_reduced_dm_per_basis(rho) for rho in red_dm_list[i_idx]])
+        red_dm_per_list[i_idx]=np.array([get_reduced_dm_per_basis(rho,internal_coherence=internal_coherence) for rho in red_dm_list[i_idx]])
     if save:
         with open(f'rho_T_av_{L}_all.pickle','wb') as f:
                 pickle.dump({'red_dm':red_dm_list,'red_dm_per':red_dm_per_list},f)
@@ -98,7 +101,7 @@ def l1_coherence(rho,k,normalization=False,average=False):
         coh/=np.prod(rho[ket_idx+bra_idx].shape)
     return coh
 
-def l1_coherence_2(rho,k1,k2):
+def l1_coherence_2(rho,k1,k2,internal_coherence=False):
     L=len(rho.shape)//2
     if k1 == 0:
         ket_idx=(0,)*L
@@ -108,10 +111,14 @@ def l1_coherence_2(rho,k1,k2):
         bra_idx=(0,)*L
     else:
         bra_idx=(0,)*(L-k2)+(1,)+(slice(None),)*(k2-1)
+    rho_=rho[ket_idx+bra_idx]
     if k1 == k2:
-        return trace(rho[ket_idx+bra_idx])
+        if internal_coherence:
+            return (torch.abs(rho_).sum()-trace(rho_))
+        else:
+            return trace(rho_)
     else:
-        return torch.abs(rho[ket_idx+bra_idx]).sum()
+        return torch.abs(rho_).sum()
 
 def trace(rho):
     L=len(rho.shape)
@@ -173,20 +180,23 @@ def resample_last_axis(tensor, num_samples, rng=None):
     resampled_tensor = tensor[..., indices]
     return resampled_tensor
 
-def get_reduced_dm(rho):
+def get_reduced_dm(rho,internal_coherence=False):
     L=len(rho.shape)//2
     red_dm=np.zeros((L+1,L+1),dtype=np.float64)
     for i in range(L+1):
         for j in range(i,L+1):
-            red_dm[i,j]=l1_coherence_2(rho,i,j)
+            red_dm[i,j]=l1_coherence_2(rho,i,j,internal_coherence=internal_coherence)
             red_dm[j,i]=red_dm[i,j]
     return red_dm
 
-def get_reduced_dm_per_basis(rho):
+def get_reduced_dm_per_basis(rho, internal_coherence=False):
     L=rho.shape[0]-1
     number_state=(np.r_[1,2**np.arange(L)])
     number_state_map=np.outer(number_state,number_state)
-    np.fill_diagonal(number_state_map,number_state)
+    if internal_coherence:
+        np.fill_diagonal(number_state_map,number_state**2-number_state)
+    else:
+        np.fill_diagonal(number_state_map,number_state)
     
     return rho/number_state_map
 
@@ -220,3 +230,13 @@ def plot_coherence(rho,diag=False,ax=None,idx=(0,12)):
     ax.xaxis.set_ticks_position('top')
     ax.xaxis.set_label_position('top')
 
+def resample(f_T_s,L,T_list,i_list,ensemble_size,bootstrap_size_list,seed_max=8,internal_coherence=False):
+    for bs_idx,bootstrap_size in tqdm(enumerate(bootstrap_size_list),total=len(bootstrap_size_list)):
+        for idx in (range(ensemble_size)):
+            red_dm_list, red_dm_per_list=save_reduced_dm_T_seed(f_T_s,L,seed_range=range(seed_max),T_list=T_list,i_list=i_list,rng=idx,save=False,bootstrap=bootstrap_size,internal_coherence=internal_coherence)
+            if idx ==0 and bs_idx==0:
+                red_dm_list_map=np.zeros((len(bootstrap_size_list),ensemble_size,)+red_dm_list.shape)
+                red_dm_per_list_map=np.zeros((len(bootstrap_size_list),ensemble_size,)+red_dm_per_list.shape)
+            red_dm_list_map[bs_idx,idx]=red_dm_list
+            red_dm_per_list_map[bs_idx,idx]=red_dm_per_list
+    return red_dm_list_map,red_dm_per_list_map

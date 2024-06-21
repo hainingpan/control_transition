@@ -38,12 +38,15 @@ def save_reduced_dm_swap(f_0, L,s_max=2000,idx_max=21,hdf5=False,internal_cohere
         red_dm=[get_reduced_dm(get_rho_av(f_0,L,idx,s),internal_coherence=internal_coherence) for s in range(s_max)]
         red_dm_list[idx]=np.mean(red_dm,axis=0)
         red_dm_per_list[idx]=get_reduced_dm_per_basis(red_dm_list[idx],internal_coherence=internal_coherence)
+    output_fn=f'C_av_{L}'
+    if internal_coherence:
+        output_fn+='_internal'
     if hdf5:
-        with h5py.File(f'C_av_{L}_tt.hdf5','w') as f:
+        with h5py.File(output_fn+'.hdf5','w') as f:
             f.create_dataset('red_dm',data=red_dm_list)
             f.create_dataset('red_dm_per',data=red_dm_per_list)
     else:
-        with open(f'C_av_{L}_tt.pickle','wb') as f:
+        with open(output_fn+'.pickle','wb') as f:
             pickle.dump({'red_dm':red_dm_list,'red_dm_per':red_dm_per_list},f)
 
 def save_reduced_dm_T(f_T, L,T_max=None, idx_max=21,hdf5=False,internal_coherence=False):
@@ -166,6 +169,17 @@ def get_rho_av(f_0,L,i,s=None):
         return rho
         
 def get_rho_av_T(f,L,i,T,s=None):
+    if s is None:
+        wf=torch.from_numpy(f[L][f'wf_{L}'][i,0,T,...,:,0])
+        # rho_av=(contract(wf,np.r_[np.arange(0,L),2*L],np.conj(wf),np.r_[np.arange(L,2*L),2*L],np.arange(2*L))/f[L][f'wf_{L}'].shape[-2])
+        rho_av=torch.abs(contract(wf,np.r_[np.arange(0,L),2*L],np.conj(wf),np.r_[np.arange(L,2*L),2*L],np.arange(2*L))/f[L][f'wf_{L}'].shape[-2])
+        return rho_av
+    else:
+        wf=torch.from_numpy(f[L][f'wf_{L}'][i,0,T,...,s,0])
+        rho=torch.abs(contract(wf,list(range(L)),torch.conj(wf),list(range(L,2*L)),list(range(2*L))))
+        return rho
+
+def get_rho_av_T_swap(f,L,i,T,s=None):
     if s is None:
         wf=torch.from_numpy(f[L][f'wf_{L}'][i,0,T,...,:,0])
         # rho_av=(contract(wf,np.r_[np.arange(0,L),2*L],np.conj(wf),np.r_[np.arange(L,2*L),2*L],np.arange(2*L))/f[L][f'wf_{L}'].shape[-2])

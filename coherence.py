@@ -83,6 +83,33 @@ def save_reduced_dm_T_seed(f_T, L,seed_range, T_list=None, i_list=None, hdf5=Fal
     else:
         return red_dm_list, red_dm_per_list
 
+def save_reduced_dm_T_seed_swap(f_T, L,seed_range, T_list=None, i_list=None, bootstrap=False,rng=None,save=True,internal_coherence=False):
+    if T_list is None:
+        T_list=range(0,1+2*L**2)
+    if i_list is None:
+        i_list=range(21)
+    # if bootstrap is None:
+    #     bootstrap=1
+    
+    red_dm_list=np.zeros((len(i_list),len(T_list),L+1,L+1),dtype=np.float64)
+    red_dm_per_list=np.zeros((len(i_list),len(T_list),L+1,L+1),dtype=np.float64)
+    for i_idx,i in (enumerate(i_list)):
+        red_dm=np.array([
+            get_reduced_dm(
+            get_rho_av_T_seed_swap(
+                f_T,L=L,i=i,T=T,seed_range=seed_range,bootstrap=bootstrap,rng=rng
+                ),internal_coherence=internal_coherence
+                ) for T_idx,T in enumerate(T_list)])
+        red_dm_list[i_idx]=red_dm
+        red_dm_per_list[i_idx]=np.array([get_reduced_dm_per_basis(rho,internal_coherence=internal_coherence) for rho in red_dm_list[i_idx]])
+    if save:
+        with open(f'rho_T_av_{L}_all.pickle','wb') as f:
+                pickle.dump({'red_dm':red_dm_list,'red_dm_per':red_dm_per_list},f)
+    else:
+        return red_dm_list, red_dm_per_list
+
+
+
 def l1_coherence(rho,k,normalization=False,average=False):
     L=len(rho.shape)//2
     if k == 0:
@@ -159,6 +186,20 @@ def get_rho_av_T_seed(f,L,i,T,seed_range, bootstrap=False,rng=None):
         wf=resample_last_axis(wf,bootstrap,rng)
     rho_av=torch.abs(contract(wf,np.r_[np.arange(0,L),2*L],np.conj(wf),np.r_[np.arange(L,2*L),2*L],np.arange(2*L))/wf.shape[-1])
     return rho_av
+
+def get_rho_av_T_seed_swap(f,L,i,T,seed_range, bootstrap=False,rng=None):
+    for seed in seed_range:
+        if seed == seed_range[0]:
+            wf=torch.from_numpy(f[seed][f'wf_{L}'][i,0,T,...,:,0])
+        else:
+            wf=torch.cat((wf,torch.from_numpy(f[seed][f'wf_{L}'][i,0,T,...,:,0])),dim=-1)
+    if bootstrap is not False:
+        wf=resample_last_axis(wf,bootstrap,rng)
+    wf=torch.abs(wf)
+    rho_av=(contract(wf,np.r_[np.arange(0,L),2*L],np.conj(wf),np.r_[np.arange(L,2*L),2*L],np.arange(2*L))/wf.shape[-1])
+    return rho_av
+
+
         
 def resample_last_axis(tensor, num_samples, rng=None):
     """
@@ -230,10 +271,14 @@ def plot_coherence(rho,diag=False,ax=None,idx=(0,12)):
     ax.xaxis.set_ticks_position('top')
     ax.xaxis.set_label_position('top')
 
-def resample(f_T_s,L,T_list,i_list,ensemble_size,bootstrap_size_list,seed_max=8,internal_coherence=False):
+def resample(f_T_s,L,T_list,i_list,ensemble_size,bootstrap_size_list,seed_max=8,internal_coherence=False,swap=False):
     for bs_idx,bootstrap_size in tqdm(enumerate(bootstrap_size_list),total=len(bootstrap_size_list)):
         for idx in (range(ensemble_size)):
-            red_dm_list, red_dm_per_list=save_reduced_dm_T_seed(f_T_s,L,seed_range=range(seed_max),T_list=T_list,i_list=i_list,rng=idx,save=False,bootstrap=bootstrap_size,internal_coherence=internal_coherence)
+            if not swap:
+                red_dm_list, red_dm_per_list=save_reduced_dm_T_seed(f_T_s,L,seed_range=range(seed_max),T_list=T_list,i_list=i_list,rng=idx,save=False,bootstrap=bootstrap_size,internal_coherence=internal_coherence)
+            else:
+                red_dm_list, red_dm_per_list=save_reduced_dm_T_seed_swap(f_T_s,L,seed_range=range(seed_max),T_list=T_list,i_list=i_list,bootstrap=bootstrap_size,rng=idx,save=False,internal_coherence=internal_coherence)
+                
             if idx ==0 and bs_idx==0:
                 red_dm_list_map=np.zeros((len(bootstrap_size_list),ensemble_size,)+red_dm_list.shape)
                 red_dm_per_list_map=np.zeros((len(bootstrap_size_list),ensemble_size,)+red_dm_per_list.shape)

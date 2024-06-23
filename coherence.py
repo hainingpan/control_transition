@@ -9,45 +9,59 @@ from opt_einsum import contract
 import dask.array as da
 import torch
 
-def save_reduced_dm(f_0, L,idx_max=21,hdf5=False,internal_coherence=False):
-    red_dm_list=np.zeros((idx_max,L+1,L+1),dtype=np.float64)
-    red_dm_per_list=np.zeros((idx_max,L+1,L+1),dtype=np.float64)
-    for idx in tqdm(range(idx_max)):
-        rho_av=get_rho_av(f_0,L,idx)
-        red_dm=get_reduced_dm(rho_av,internal_coherence=internal_coherence)
-        red_dm_list[idx]=(red_dm)
-        red_dm_per_list[idx]=(get_reduced_dm_per_basis(red_dm,internal_coherence=internal_coherence))
-    output_fn=f'rho_av_{L}'
-    if internal_coherence:
-        output_fn+='_internal'
-    if hdf5:
-        with h5py.File(output_fn+'.hdf5','w') as f:
-            f.create_dataset('red_dm',data=red_dm_list)
-            f.create_dataset('red_dm_per',data=red_dm_per_list)
-    else:
-        with open(output_fn+'.pickle','wb') as f:
-            pickle.dump({'red_dm':red_dm_list,'red_dm_per':red_dm_per_list},f)
+def save_coherence_matrix(f_0, L,i_list, order):
+    """wf -> density matrix -> average->coherence
+    |\sum_m p_m rho_m| : coh(ave(..))"""
+    assert order in ['coh_ave','ave_coh'], 'order must be either coh_ave or ave_coh'
+    coherence_matrix_list=np.zeros((len(i_list),L+1,L+1),dtype=np.float64)
+    coherence_matrix_per_list=np.zeros((len(i_list),L+1,L+1),dtype=np.float64)
+    fdw_list=np.zeros((len(i_list),L+1),dtype=np.float64)
+    fdw_per_list=np.zeros((len(i_list),L+1),dtype=np.float64)
+    for idx in tqdm(i_list):
+        if order == 'coh_ave':
+            rho_av=get_rho_av(f_0,L,idx)
+        elif order == 'ave_coh':
+            rho_av=get_rho_av(f_0,L,idx,abs=True)
+        coherence_matrix, fdw_list[idx]=get_coherence_matrix(rho_av)
+        coherence_matrix_list[idx]=(coherence_matrix)
+        coherence_matrix_per_list[idx]=(get_coherence_matrix_per_basis(coherence_matrix,))
+        fdw_per_list[idx]=get_coherence_matrix_per_basis(fdw_list[idx])
 
+    output_fn=f'{order}_L{L}'
+    with open(output_fn+'.pickle','wb') as f:
+        pickle.dump({
+            'coherence_matrix':coherence_matrix_list,'coherence_matrix_per':coherence_matrix_per_list,
+            'fdw':fdw_list,
+            'fdw_per':fdw_per_list},f)
 
-def save_reduced_dm_swap(f_0, L,s_max=2000,idx_max=21,hdf5=False,internal_coherence=False):
-    """ \sum_m p_m  C(\rho_m)"""
+# def save_ave_coherence_matrix(f_0, L,i_list, ):
+#     """ """
+#     """	2. Wf -> density matrix -> coherence |rho| -> average
+#     \sum_m p_m  C(\rho_m): ave(coh(..))"""
 
-    red_dm_list=np.zeros((idx_max,L+1,L+1),dtype=np.float64)
-    red_dm_per_list=np.zeros((idx_max,L+1,L+1),dtype=np.float64)
-    for idx in tqdm(range(idx_max)):
-        red_dm=[get_reduced_dm(get_rho_av(f_0,L,idx,s),internal_coherence=internal_coherence) for s in range(s_max)]
-        red_dm_list[idx]=np.mean(red_dm,axis=0)
-        red_dm_per_list[idx]=get_reduced_dm_per_basis(red_dm_list[idx],internal_coherence=internal_coherence)
-    output_fn=f'C_av_{L}'
-    if internal_coherence:
-        output_fn+='_internal'
-    if hdf5:
-        with h5py.File(output_fn+'.hdf5','w') as f:
-            f.create_dataset('red_dm',data=red_dm_list)
-            f.create_dataset('red_dm_per',data=red_dm_per_list)
-    else:
-        with open(output_fn+'.pickle','wb') as f:
-            pickle.dump({'red_dm':red_dm_list,'red_dm_per':red_dm_per_list},f)
+#     coherence_matrix_list=np.zeros((len(i_list),L+1,L+1),dtype=np.float64)
+#     coherence_matrix_per_list=np.zeros((len(i_list),L+1,L+1),dtype=np.float64)
+#     fdw_list=np.zeros((len(i_list),L+1),dtype=np.float64)
+#     fdw_per_list=np.zeros((len(i_list),L+1),dtype=np.float64)
+
+#     for idx in tqdm(i_list):
+#         rho_av=get_rho_av(f_0,L,idx,abs=True)
+
+#         coherence_matrix, fdw_list[idx]=get_coherence_matrix(rho_av)
+#         coherence_matrix_list[idx]=(coherence_matrix)
+#         coherence_matrix_per_list[idx]=(get_coherence_matrix_per_basis(coherence_matrix,))
+#         fdw_per_list[idx]=get_coherence_matrix_per_basis(fdw_list[idx])
+
+#         # coherence_matrix=[get_coherence_matrix(get_rho_av(f_0,L,idx,s),internal_coherence=internal_coherence) for s in range(s_max)]
+#         # coherence_matrix_list[idx]=np.mean(coherence_matrix,axis=0)
+#         # red_dm_per_list[idx]=get_coherence_matrix_per_basis(coherence_matrix_list[idx],internal_coherence=internal_coherence)
+#     output_fn=f'ave_coh_L{L}'
+#     # output_fn=f'C_av_{L}'
+#     with open(output_fn+'.pickle','wb') as f:
+#         pickle.dump({
+#             'coherence_matrix':coherence_matrix_list,'coherence_matrix_per':coherence_matrix_per_list,
+#             'fdw':fdw_list,
+#             'fdw_per':fdw_per_list},f)
 
 def save_reduced_dm_T(f_T, L,T_max=None, idx_max=21,hdf5=False,internal_coherence=False):
     """ \sum_m p_m  C(\rho_m)"""
@@ -56,9 +70,9 @@ def save_reduced_dm_T(f_T, L,T_max=None, idx_max=21,hdf5=False,internal_coherenc
     red_dm_list=np.zeros((idx_max,T_max,L+1,L+1),dtype=np.float64)
     red_dm_per_list=np.zeros((idx_max,T_max,L+1,L+1),dtype=np.float64)
     for idx in tqdm(range(idx_max)):
-        red_dm=np.array([get_reduced_dm(get_rho_av_T(f_T,L=L,i=idx,T=T),internal_coherence=internal_coherence) for T in range(T_max)])
+        red_dm=np.array([get_coherence_matrix(get_rho_av_T(f_T,L=L,i=idx,T=T),internal_coherence=internal_coherence) for T in range(T_max)])
         red_dm_list[idx]=(red_dm)
-        red_dm_per_list[idx]=np.array([get_reduced_dm_per_basis(rho,internal_coherence=internal_coherence) for rho in red_dm_list[idx]])
+        red_dm_per_list[idx]=np.array([get_coherence_matrix_per_basis(rho,internal_coherence=internal_coherence) for rho in red_dm_list[idx]])
     if hdf5:
         with h5py.File(f'rho_T_av_{L}.hdf5','w') as f:
             f.create_dataset('red_dm',data=red_dm_list)
@@ -77,9 +91,9 @@ def save_reduced_dm_T_seed(f_T, L,seed_range, T_list=None, i_list=None, hdf5=Fal
     red_dm_per_list=np.zeros((len(i_list),len(T_list),L+1,L+1),dtype=np.float64)
     for i_idx,i in (enumerate(i_list)):
     # for i_idx,i in tqdm(enumerate(i_list)):
-        red_dm=np.array([get_reduced_dm(get_rho_av_T_seed(f_T,L=L,i=i,T=T,seed_range=seed_range,bootstrap=bootstrap,rng=rng),internal_coherence=internal_coherence) for T_idx,T in enumerate(T_list)])
+        red_dm=np.array([get_coherence_matrix(get_rho_av_T_seed(f_T,L=L,i=i,T=T,seed_range=seed_range,bootstrap=bootstrap,rng=rng),internal_coherence=internal_coherence) for T_idx,T in enumerate(T_list)])
         red_dm_list[i_idx]=(red_dm)
-        red_dm_per_list[i_idx]=np.array([get_reduced_dm_per_basis(rho,internal_coherence=internal_coherence) for rho in red_dm_list[i_idx]])
+        red_dm_per_list[i_idx]=np.array([get_coherence_matrix_per_basis(rho,internal_coherence=internal_coherence) for rho in red_dm_list[i_idx]])
     if save:
         with open(f'rho_T_av_{L}_all.pickle','wb') as f:
                 pickle.dump({'red_dm':red_dm_list,'red_dm_per':red_dm_per_list},f)
@@ -98,13 +112,13 @@ def save_reduced_dm_T_seed_swap(f_T, L,seed_range, T_list=None, i_list=None, boo
     red_dm_per_list=np.zeros((len(i_list),len(T_list),L+1,L+1),dtype=np.float64)
     for i_idx,i in (enumerate(i_list)):
         red_dm=np.array([
-            get_reduced_dm(
+            get_coherence_matrix(
             get_rho_av_T_seed_swap(
                 f_T,L=L,i=i,T=T,seed_range=seed_range,bootstrap=bootstrap,rng=rng
                 ),internal_coherence=internal_coherence
                 ) for T_idx,T in enumerate(T_list)])
         red_dm_list[i_idx]=red_dm
-        red_dm_per_list[i_idx]=np.array([get_reduced_dm_per_basis(rho,internal_coherence=internal_coherence) for rho in red_dm_list[i_idx]])
+        red_dm_per_list[i_idx]=np.array([get_coherence_matrix_per_basis(rho,internal_coherence=internal_coherence) for rho in red_dm_list[i_idx]])
     if save:
         with open(f'rho_T_av_{L}_all.pickle','wb') as f:
                 pickle.dump({'red_dm':red_dm_list,'red_dm_per':red_dm_per_list},f)
@@ -131,7 +145,7 @@ def l1_coherence(rho,k,normalization=False,average=False):
         coh/=np.prod(rho[ket_idx+bra_idx].shape)
     return coh
 
-def l1_coherence_2(rho,k1,k2,internal_coherence=False):
+def l1_coherence_2(rho,k1,k2,):
     L=len(rho.shape)//2
     if k1 == 0:
         ket_idx=(0,)*L
@@ -143,10 +157,7 @@ def l1_coherence_2(rho,k1,k2,internal_coherence=False):
         bra_idx=(0,)*(L-k2)+(1,)+(slice(None),)*(k2-1)
     rho_=rho[ket_idx+bra_idx]
     if k1 == k2:
-        if internal_coherence:
-            return (torch.abs(rho_).sum()-trace(rho_))
-        else:
-            return trace(rho_)
+        return ((torch.abs(rho_).sum()-trace(rho_)),trace(rho_))
     else:
         return torch.abs(rho_).sum()
 
@@ -157,13 +168,24 @@ def trace(rho):
     else:
         return rho
 
-def get_rho_av(f_0,L,i,s=None):
+def get_rho_av(f_0,L,i,s=None, abs=False):
+    """ dm = wf.conj() @ wf; if abs= False
+        dm = abs(wf) @ abs(wf); if abs= True"""
     if s is None:
         wf=torch.from_numpy(f_0[L][f'wf_{L}'][i,0,0,...,:,0])
-        
-        rho_av=torch.abs(contract(wf,list(range(L))+[2*L],torch.conj(wf),list(range(L,2*L))+[2*L],list(range(2*L)))/f_0[L][f'wf_{L}'].shape[-2])
+        ensemble_size=f_0[L][f'wf_{L}'].shape[-2]
+        index_1=list(range(L))+[2*L]
+        index_2=list(range(L,2*L))+[2*L]
+        index_final=list(range(2*L))
+        if abs:
+            pass
+            wf=wf.abs()
+            rho_av=(contract(wf,index_1,wf,index_2,index_final)/ensemble_size)
+        else:
+            rho_av=(contract(wf,index_1,(wf).conj(),index_2,index_final).abs()/ensemble_size)
         return rho_av
     else:
+        # need to update but may not be very useful now, could be deleted
         wf=torch.from_numpy(f_0[L][f'wf_{L}'][i,0,0,...,s,0])
         rho=torch.abs(contract(wf,list(range(L)),torch.conj(wf),list(range(L,2*L)),list(range(2*L))))
         return rho
@@ -235,26 +257,32 @@ def resample_last_axis(tensor, num_samples, rng=None):
     resampled_tensor = tensor[..., indices]
     return resampled_tensor
 
-def get_reduced_dm(rho,internal_coherence=False):
+def get_coherence_matrix(rho,):
+    """ obtain the coherence matrix from a density matrix
+    the diagonal (off-diagonal) elements are intra-FDW (inter-FDW) coherence
+    """
     L=len(rho.shape)//2
-    red_dm=np.zeros((L+1,L+1),dtype=np.float64)
+    coherence_matrix=np.zeros((L+1,L+1),dtype=np.float64)
+    fdw=np.zeros((L+1,),dtype=np.float64)
     for i in range(L+1):
         for j in range(i,L+1):
-            red_dm[i,j]=l1_coherence_2(rho,i,j,internal_coherence=internal_coherence)
-            red_dm[j,i]=red_dm[i,j]
-    return red_dm
+            if i == j:
+                coherence_matrix[i,j], fdw[i]= l1_coherence_2(rho,i,j,)
+            else:
+                coherence_matrix[i,j]=l1_coherence_2(rho,i,j,)
+                coherence_matrix[j,i]=coherence_matrix[i,j]
+    return coherence_matrix, fdw
 
-def get_reduced_dm_per_basis(rho, internal_coherence=False):
+def get_coherence_matrix_per_basis(rho, ):
     L=rho.shape[0]-1
     number_state=(np.r_[1,2**np.arange(L)])
-    number_state_map=np.outer(number_state,number_state)
-    if internal_coherence:
+    if len(rho.shape) == 2:
+        number_state_map=np.outer(number_state,number_state)
         np.fill_diagonal(number_state_map,number_state**2-number_state)
-    else:
-        np.fill_diagonal(number_state_map,number_state)
-    
-    return rho/number_state_map
-
+        return rho/number_state_map
+    elif len(rho.shape) == 1:
+        # np.fill_diagonal(number_state_map,number_state)
+        return rho/number_state
 
 def plot_reduced_dm(rho,ax=None,label=r'$|{\rho}|$'):
     import matplotlib.pyplot as plt
@@ -299,3 +327,73 @@ def resample(f_T_s,L,T_list,i_list,ensemble_size,bootstrap_size_list,seed_max=8,
             red_dm_list_map[bs_idx,idx]=red_dm_list
             red_dm_per_list_map[bs_idx,idx]=red_dm_per_list
     return red_dm_list_map,red_dm_per_list_map
+
+# Fitting
+
+
+def generate_fitting_data(rho_av,idx,L_list,kind,idx_min=1,):
+    # idx=0
+    L_list_=[]
+    k_list_=[]
+    C_list_=[]
+    for L in (L_list):
+        k_list=np.arange(idx_min,L+1)
+        if kind == 'inter':
+            C=rho_av[L]['coherence_matrix_per'][idx][0,idx_min:]
+        elif kind == 'intra':
+            C=np.diag(rho_av[L]['coherence_matrix_per'][idx])[idx_min:]
+        elif kind == 'fdw':
+            C=rho_av[L]['fdw_per'][idx,idx_min:]
+
+        L_list_.extend([L]*len(k_list))
+        k_list_.extend(k_list)
+        C_list_.extend(C)
+        # ax.plot(k_list,,'.',label=f'L={L}',color=color)
+
+    L_list_=np.array(L_list_)
+    k_list_=np.array(k_list_)
+    C_list_=np.array(C_list_)
+    return k_list_,L_list_,C_list_
+
+def remove_zero(k_list_,L_list_,C_list_,threshold=1e-10):
+    mask= (C_list_>threshold)
+    return k_list_[mask],L_list_[mask],C_list_[mask]
+
+def fit_params(rho_av,L_list,kind='inter'):
+    alpha_list=[]
+    beta_list=[]
+    A_list=[]
+    alpha_error_list=[]
+    beta_error_list=[]
+    A_error_list=[]
+
+    for idx in range(20):
+        k_list_,L_list_,C_list_=generate_fitting_data(rho_av,idx,L_list=L_list,idx_min=2,kind=kind)
+        # print(k_list_.shape,L_list_.shape,C_list_.shape)
+        k_list_,L_list_,C_list_=remove_zero(k_list_,L_list_,C_list_)
+        try:
+            alpha,beta,A,alpha_err, beta_err, A_err=linear_regression_2d(k_list_,L_list_,np.log2(C_list_))
+        except:
+            alpha,beta,A,alpha_err, beta_err, A_err=np.nan,np.nan,np.nan,np.nan,np.nan,np.nan
+        alpha_list.append(alpha)
+        beta_list.append(beta)
+        A_list.append(A)
+        alpha_error_list.append(alpha_err)
+        beta_error_list.append(beta_err)
+        A_error_list.append(A_err)
+    return alpha_list,beta_list,A_list,alpha_error_list,beta_error_list,A_error_list,
+
+import statsmodels.api as sm
+def linear_regression_2d(k, L, y):
+    # Create the design matrix
+    X = np.column_stack((L, k))
+    X = sm.add_constant(X)  # Adds a constant term (A) to the model
+
+    # Fit the model
+    model = sm.OLS(y, X).fit()
+
+    # Extract the parameters and standard errors
+    alpha, beta, A = model.params[1], model.params[2], model.params[0]
+    alpha_err, beta_err, A_err = model.bse[1], model.bse[2], model.bse[0]
+
+    return alpha, beta, A, alpha_err, beta_err, A_err

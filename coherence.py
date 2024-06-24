@@ -34,54 +34,39 @@ def save_coherence_matrix(f_0, L,i_list, order):
             'fdw':fdw_list,
             'fdw_per':fdw_per_list},f)
 
-# def save_ave_coherence_matrix(f_0, L,i_list, ):
-#     """ """
-#     """	2. Wf -> density matrix -> coherence |rho| -> average
-#     \sum_m p_m  C(\rho_m): ave(coh(..))"""
-
-#     coherence_matrix_list=np.zeros((len(i_list),L+1,L+1),dtype=np.float64)
-#     coherence_matrix_per_list=np.zeros((len(i_list),L+1,L+1),dtype=np.float64)
-#     fdw_list=np.zeros((len(i_list),L+1),dtype=np.float64)
-#     fdw_per_list=np.zeros((len(i_list),L+1),dtype=np.float64)
-
-#     for idx in tqdm(i_list):
-#         rho_av=get_rho_av(f_0,L,idx,abs=True)
-
-#         coherence_matrix, fdw_list[idx]=get_coherence_matrix(rho_av)
-#         coherence_matrix_list[idx]=(coherence_matrix)
-#         coherence_matrix_per_list[idx]=(get_coherence_matrix_per_basis(coherence_matrix,))
-#         fdw_per_list[idx]=get_coherence_matrix_per_basis(fdw_list[idx])
-
-#         # coherence_matrix=[get_coherence_matrix(get_rho_av(f_0,L,idx,s),internal_coherence=internal_coherence) for s in range(s_max)]
-#         # coherence_matrix_list[idx]=np.mean(coherence_matrix,axis=0)
-#         # red_dm_per_list[idx]=get_coherence_matrix_per_basis(coherence_matrix_list[idx],internal_coherence=internal_coherence)
-#     output_fn=f'ave_coh_L{L}'
-#     # output_fn=f'C_av_{L}'
-#     with open(output_fn+'.pickle','wb') as f:
-#         pickle.dump({
-#             'coherence_matrix':coherence_matrix_list,'coherence_matrix_per':coherence_matrix_per_list,
-#             'fdw':fdw_list,
-#             'fdw_per':fdw_per_list},f)
-
-def save_reduced_dm_T(f_T, L,T_max=None, idx_max=21,hdf5=False,internal_coherence=False):
+def save_coherence_matrix_T(f_T, L,order, T_list=None, i_list=None,):
     """ \sum_m p_m  C(\rho_m)"""
-    if T_max is None:
-        T_max=1+2*L**2
-    red_dm_list=np.zeros((idx_max,T_max,L+1,L+1),dtype=np.float64)
-    red_dm_per_list=np.zeros((idx_max,T_max,L+1,L+1),dtype=np.float64)
-    for idx in tqdm(range(idx_max)):
-        red_dm=np.array([get_coherence_matrix(get_rho_av_T(f_T,L=L,i=idx,T=T),internal_coherence=internal_coherence) for T in range(T_max)])
-        red_dm_list[idx]=(red_dm)
-        red_dm_per_list[idx]=np.array([get_coherence_matrix_per_basis(rho,internal_coherence=internal_coherence) for rho in red_dm_list[idx]])
-    if hdf5:
-        with h5py.File(f'rho_T_av_{L}.hdf5','w') as f:
-            f.create_dataset('red_dm',data=red_dm_list)
-            f.create_dataset('red_dm_per',data=red_dm_per_list)
-    else:
-        with open(f'rho_T_av_{L}.pickle','wb') as f:
-            pickle.dump({'red_dm':red_dm_list,'red_dm_per':red_dm_per_list},f)
+    if T_list is None:
+        T_list=range(0,1+2*L**2)
+    if i_list is None:
+        i_list=range(21)
 
-def save_reduced_dm_T_seed(f_T, L,seed_range, T_list=None, i_list=None, hdf5=False,bootstrap=False,rng=None,save=True,internal_coherence=False):
+    coherence_matrix_list=np.zeros((len(i_list),len(T_list),L+1,L+1),dtype=np.float64)
+    coherence_matrix_per_list=np.zeros((len(i_list),len(T_list),L+1,L+1),dtype=np.float64)
+    fdw_list=np.zeros((len(i_list),len(T_list),L+1),dtype=np.float64)
+    fdw_per_list=np.zeros((len(i_list),len(T_list),L+1),dtype=np.float64)
+
+    for idx,i in tqdm((enumerate(i_list)),total=len(i_list)):
+        for T_idx,T in (enumerate(T_list)):
+            if order == 'coh_ave':
+                rho_av=get_rho_av_T(f_T,L,idx,T,idx)
+            elif order == 'ave_coh':
+                rho_av=get_rho_av_T(f_T,L,idx,T,idx,abs=True)
+            coherence_matrix, fdw = get_coherence_matrix(rho_av)
+
+            coherence_matrix_list[idx,T_idx]=(coherence_matrix)
+            coherence_matrix_per_list[idx,T_idx]=(get_coherence_matrix_per_basis(coherence_matrix,))
+            fdw_list[idx,T_idx]=fdw
+            fdw_per_list[idx,T_idx]=get_coherence_matrix_per_basis(fdw)
+
+    output_fn=f'{order}_L{L}_T'
+    with open(output_fn+'.pickle','wb') as f:
+        pickle.dump({
+            'coherence_matrix':coherence_matrix_list,'coherence_matrix_per':coherence_matrix_per_list,
+            'fdw':fdw_list,
+            'fdw_per':fdw_per_list},f)
+
+def save_coherence_matrix_T_seed(f_T, L,seed_range, T_list=None, i_list=None, hdf5=False,bootstrap=False,rng=None,save=True,internal_coherence=False):
     if T_list is None:
         T_list=range(0,1+2*L**2)
     if i_list is None:
@@ -100,7 +85,7 @@ def save_reduced_dm_T_seed(f_T, L,seed_range, T_list=None, i_list=None, hdf5=Fal
     else:
         return red_dm_list, red_dm_per_list
 
-def save_reduced_dm_T_seed_swap(f_T, L,seed_range, T_list=None, i_list=None, bootstrap=False,rng=None,save=True,internal_coherence=False):
+def save_coherence_matrix_T_seed_swap(f_T, L,seed_range, T_list=None, i_list=None, bootstrap=False,rng=None,save=True,internal_coherence=False):
     if T_list is None:
         T_list=range(0,1+2*L**2)
     if i_list is None:
@@ -178,7 +163,6 @@ def get_rho_av(f_0,L,i,s=None, abs=False):
         index_2=list(range(L,2*L))+[2*L]
         index_final=list(range(2*L))
         if abs:
-            pass
             wf=wf.abs()
             rho_av=(contract(wf,index_1,wf,index_2,index_final)/ensemble_size)
         else:
@@ -190,13 +174,21 @@ def get_rho_av(f_0,L,i,s=None, abs=False):
         rho=torch.abs(contract(wf,list(range(L)),torch.conj(wf),list(range(L,2*L)),list(range(2*L))))
         return rho
         
-def get_rho_av_T(f,L,i,T,s=None):
+def get_rho_av_T(f,L,i,T,s=None,abs=False):
     if s is None:
         wf=torch.from_numpy(f[L][f'wf_{L}'][i,0,T,...,:,0])
-        # rho_av=(contract(wf,np.r_[np.arange(0,L),2*L],np.conj(wf),np.r_[np.arange(L,2*L),2*L],np.arange(2*L))/f[L][f'wf_{L}'].shape[-2])
-        rho_av=torch.abs(contract(wf,np.r_[np.arange(0,L),2*L],np.conj(wf),np.r_[np.arange(L,2*L),2*L],np.arange(2*L))/f[L][f'wf_{L}'].shape[-2])
+        ensemble_size=f[L][f'wf_{L}'].shape[-2]
+        index_1=list(range(L))+[2*L]
+        index_2=list(range(L,2*L))+[2*L]
+        index_final=list(range(2*L))
+        if abs:
+            wf=wf.abs()
+            rho_av=(contract(wf,index_1,wf,index_2,index_final)/ensemble_size)
+        else:
+            rho_av=(contract(wf,index_1,wf.conj(),index_2,index_final).abs()/ensemble_size)
         return rho_av
     else:
+        # This is not used now, could be deleted
         wf=torch.from_numpy(f[L][f'wf_{L}'][i,0,T,...,s,0])
         rho=torch.abs(contract(wf,list(range(L)),torch.conj(wf),list(range(L,2*L)),list(range(2*L))))
         return rho
@@ -317,9 +309,9 @@ def resample(f_T_s,L,T_list,i_list,ensemble_size,bootstrap_size_list,seed_max=8,
     for bs_idx,bootstrap_size in tqdm(enumerate(bootstrap_size_list),total=len(bootstrap_size_list)):
         for idx in (range(ensemble_size)):
             if not swap:
-                red_dm_list, red_dm_per_list=save_reduced_dm_T_seed(f_T_s,L,seed_range=range(seed_max),T_list=T_list,i_list=i_list,rng=idx,save=False,bootstrap=bootstrap_size,internal_coherence=internal_coherence)
+                red_dm_list, red_dm_per_list=save_coherence_matrix_T_seed(f_T_s,L,seed_range=range(seed_max),T_list=T_list,i_list=i_list,rng=idx,save=False,bootstrap=bootstrap_size,internal_coherence=internal_coherence)
             else:
-                red_dm_list, red_dm_per_list=save_reduced_dm_T_seed_swap(f_T_s,L,seed_range=range(seed_max),T_list=T_list,i_list=i_list,bootstrap=bootstrap_size,rng=idx,save=False,internal_coherence=internal_coherence)
+                red_dm_list, red_dm_per_list=save_coherence_matrix_T_seed_swap(f_T_s,L,seed_range=range(seed_max),T_list=T_list,i_list=i_list,bootstrap=bootstrap_size,rng=idx,save=False,internal_coherence=internal_coherence)
                 
             if idx ==0 and bs_idx==0:
                 red_dm_list_map=np.zeros((len(bootstrap_size_list),ensemble_size,)+red_dm_list.shape)

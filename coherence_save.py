@@ -8,6 +8,12 @@ def run(L):
     # save_reduced_dm_swap(f_0,L=L)
     save_coherence_matrix(f_0,L=L,i_list=range(21),order='ave_coh')
 
+def run_T(L):
+    f_0={}
+    dirpath='.'
+    f_0[L]=h5py.File(os.path.join(dirpath,f'CT_En2000_pctrl(0.00,1.00,21)_pproj(0.00,0.00,1)_L({L},{L+2},2)_xj(0)_seed0_64_wf_T_all.hdf5'))
+    save_coherence_matrix_T(f_0,L=L,i_list=range(21),order='ave_coh')
+    # 'CT_En2000_pctrl(0.00,1.00,21)_pproj(0.00,0.00,1)_L(8,10,2)_xj(0)_seed0_64_wf_T_all.hdf5'
 def run2():
     # bootstrap_size_list=[100,]
     bootstrap_size_list=[500]
@@ -29,7 +35,8 @@ def run2():
 
 if __name__  == "__main__":
     # for L in [16]:
-    for L in [10,12,14,16]:
-        run(L)
+    for L in [8,]:
+        # run(L)
+        run_T(L)
     # run2()
     print('finished')

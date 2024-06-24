@@ -49,9 +49,9 @@ def save_coherence_matrix_T(f_T, L,order, T_list=None, i_list=None,):
     for idx,i in tqdm((enumerate(i_list)),total=len(i_list)):
         for T_idx,T in (enumerate(T_list)):
             if order == 'coh_ave':
-                rho_av=get_rho_av_T(f_T,L,idx,T,idx)
+                rho_av=get_rho_av_T(f_T,L=L,i=idx,T=T)
             elif order == 'ave_coh':
-                rho_av=get_rho_av_T(f_T,L,idx,T,idx,abs=True)
+                rho_av=get_rho_av_T(f_T,L=L,i=idx,T=T,abs=True)
             coherence_matrix, fdw = get_coherence_matrix(rho_av)
 
             coherence_matrix_list[idx,T_idx]=(coherence_matrix)

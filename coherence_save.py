@@ -35,7 +35,7 @@ def run2():
 
 if __name__  == "__main__":
     # for L in [16]:
-    for L in [8,]:
+    for L in [8,10]:
         # run(L)
         run_T(L)
     # run2()

@@ -142,7 +142,8 @@ def l1_coherence_2(rho,k1,k2,):
         bra_idx=(0,)*(L-k2)+(1,)+(slice(None),)*(k2-1)
     rho_=rho[ket_idx+bra_idx]
     if k1 == k2:
-        return ((torch.abs(rho_).sum()-trace(rho_)),trace(rho_))
+        tr_rho=trace(rho_)
+        return ((torch.abs(rho_).sum()-tr_rho),tr_rho)
     else:
         return torch.abs(rho_).sum()
 

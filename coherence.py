@@ -1,7 +1,7 @@
 import h5py
 import numpy as np
 import os
-# import matplotlib.pyplot as plt
+import matplotlib.pyplot as plt
 from tqdm import tqdm
 import sys
 import pickle
@@ -277,7 +277,6 @@ def get_coherence_matrix_per_basis(rho, ):
         return rho/number_state
 
 def plot_reduced_dm(rho,ax=None,label=r'$|{\rho}|$'):
-    import matplotlib.pyplot as plt
 
     if ax is None:
         fig,ax=plt.subplots()
@@ -389,3 +388,107 @@ def linear_regression_2d(k, L, y):
     alpha_err, beta_err, A_err = model.bse[1], model.bse[2], model.bse[0]
 
     return alpha, beta, A, alpha_err, beta_err, A_err
+
+
+def plot_spread(ave_coh_T, L,kind, idx,per='',ax=None,offset=1e-8,t=20,i=None,vmin=None,vmax=None,colorbar=True):
+    if ax is None:
+        fig,ax=plt.subplots()
+    if kind == 'fdw':
+        data = ave_coh_T[L]['fdw'+per][idx,:] + offset
+        label = r'$\bar{f}(k)$'
+        ax.set_xticks(np.arange(0,L+1,2))
+    elif kind == 'inter':
+        data = ave_coh_T[L]['coherence_matrix'+per][idx,:,i,:]
+        label = rf'$\bar{{\mathcal{{C}}}}({i},k)$'
+        ax.set_xlim(1,L)
+        ax.set_xticks(np.arange(1,L+1,2))
+    elif kind == 'intra':
+        data = contract((ave_coh_T[L]['coherence_matrix'+per][idx,:]),[0,1,1],[0,1])+offset
+        label= r'$\bar{\mathcal{C}}(k,k)$'
+        ax.set_xlim(2,L)
+        ax.set_xticks(np.arange(2,L+1,2))
+    im=ax.imshow(np.log10(data),cmap='Blues',vmin=vmin,vmax=vmax)
+    ax.set_ylim(0,t)
+    ax.set_ylabel('t')
+    ax.set_xlabel('k')
+    if colorbar:
+        plt.colorbar(im,label=label)
+
+def plot_growth(ave_coh_T,L,idx,k,tmin=None,tmax=40,ax=None,log=False,per='',fit=False,part='all'):
+    if ax is None:
+        fig,ax=plt.subplots()
+    color_list=['r','b','cyan']
+    if tmin is None:
+        tmin=L//2-1
+    t_list=np.arange(tmin,tmax)
+    ax.plot((t_list-tmin),(ave_coh_T[L]['fdw'+per][idx,tmin:tmax,k]),label='fdw'+per,color=color_list[0])
+
+    ax.plot((t_list-tmin),(ave_coh_T[L]['coherence_matrix'+per][idx,tmin:tmax,k,k]),label=f'intra'+per,color=color_list[1])
+
+    ax.plot((t_list-tmin),(ave_coh_T[L]['coherence_matrix'+per][idx,tmin:tmax,k,k+1]),label=f'inter'+per,color=color_list[2])
+    
+    ax.set_xlabel('t')
+    if log:
+        ax.set_yscale('log')
+        ax.set_xscale('log')
+
+
+    if fit:
+        x=np.log((t_list-tmin)[1:])
+        if part == 'all':
+            slice_=slice(None)
+        elif part == 'even':
+            slice_=slice(0,None,2)
+        elif part == 'odd':
+            slice_=slice(1,None,2)
+
+        fit_growth(
+            x=np.log((t_list-tmin)[1:])[slice_], 
+            y=np.log((ave_coh_T[L]['fdw'+per][idx,tmin+1:tmax,k]))[slice_],
+            color=color_list[0],
+            label='fdw'+per,
+            ax=ax)
+
+        fit_growth(
+            x=np.log((t_list-tmin)[1:])[slice_], 
+            y=np.log((ave_coh_T[L]['coherence_matrix'+per][idx,tmin+1:tmax,k,k]))[slice_],
+            color=color_list[1],
+            label='intra'+per,
+            ax=ax)
+
+        fit_growth(
+            x=np.log((t_list-tmin)[1:])[slice_], 
+            y=np.log((ave_coh_T[L]['coherence_matrix'+per][idx,tmin+1:tmax,k,k+1]))[slice_],
+            color=color_list[2],
+            label='inter'+per,
+            ax=ax)
+        
+    ax.legend()
+
+def fit_growth(x, y, color, label, ax):
+    # Mask to filter out NaN and Inf values
+    mask = (~np.isinf(x)) & (~np.isinf(y))
+    x = x[mask]
+    y = y[mask]
+    
+    # Adding a constant term to the independent variable for statsmodels
+    x_with_const = sm.add_constant(x)
+    
+    # Fit the regression model
+    model = sm.OLS(y, x_with_const)
+    results = model.fit()
+    
+    # Extracting slope and its standard error
+    slope = results.params[1]
+    slope_std_err = results.bse[1]
+    
+    # Generate fitted line
+    x_fine = np.linspace(x[0], x[-1], 101)
+    x_fine_with_const = sm.add_constant(x_fine)
+    y_fitted = results.predict(x_fine_with_const)
+    
+    # Plotting
+    ax.plot(np.exp(x_fine), np.exp(y_fitted), '--', color=color, label=f'{label}:{slope:.2f} ± {slope_std_err:.2f}')
+    
+    # Returning the results including the slope and its standard error
+    return slope, slope_std_err

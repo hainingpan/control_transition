@@ -111,7 +111,7 @@ def add_to_dict(data_dict,data,filename,fixed_params_keys={},skip_keys=set(['off
                     parse_global(data_dict,data,metric,iteration)
 
         elif filename.split('.')[-1] == 'json':
-            if '_DW' in filename or '_T' in filename:
+            if '_DW' in filename or '_T' in filename or '_coherence' in filename:
                 parse_json_T(data_dict,data,metric,iterator,fixed_params_keys,skip_keys)
             else:
                 parse_json(data_dict,data,metric,iterator,fixed_params_keys,skip_keys)
@@ -180,10 +180,22 @@ def parse_json_T(data_dict,data,metric,iterator,fixed_params_keys,skip_keys):
     # params=(metric,)+tuple(val for key,val in iterator.items() if key != 'seed' and key not in fixed_params_keys and key not in skip_keys)
     params=(metric,iterator['L'],iterator['p_ctrl'],iterator['p_proj'])
     observations=data[metric]
-    T_f=len(observations)
+    coherence_flag=isinstance(observations[0],list)
+    
+    if coherence_flag:
+        # used for coherence with shape (L+1,L+1,T,)
+        observations=np.array(observations)
+        T_f=observations.shape[-1]
+    else:
+        # used for DW with shape (T,)
+        T_f=len(observations)
+
     for T_idx in range(T_f):
         params_T=(*params, T_idx)
-        observations_T_idx=observations[T_idx]
+        if coherence_flag:
+            observations_T_idx=observations[...,T_idx]
+        else:
+            observations_T_idx=observations[T_idx]
         if params_T in data_dict:
             data_dict[params_T].append(observations_T_idx)
         else:

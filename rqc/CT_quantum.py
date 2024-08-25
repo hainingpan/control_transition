@@ -378,6 +378,41 @@ class CT_quantum:
             return np.mean([self.von_Neumann_entropy_pure(np.arange(i,i+self.L//2),vec) for i in range(self.L//2)])
         else:
             return self.von_Neumann_entropy_pure(np.arange(self.L//2),vec,n=n,threshold=threshold)
+    
+    def bipartite_mutual_information(self,subregion_A,subregion_B,selfaverage=False,vec=None,n=1,threshold=1e-10):
+        """Calculate bipartite entanglement entropy. The bipartite entanglement entropy is defined as S_A+S_B-S_AB.
+        
+        Parameters
+        ----------
+        subregion_A : list of int or np.array
+            subregion A
+        subregion_B : list of int or np.array
+            subregion B
+        selfaverage : bool, optional
+            if true, average over all possible partitions, by default False
+        vec : np.array, shape=(2**L_T,) or (2,)*L_T, optional
+            state vector, by default None
+        n : int
+            Renyi index
+        threshold : float
+            Threshold of zero for 0th Renyi's entropy
+        
+        Returns
+        -------
+        float
+            Bipartite entanglement entropy
+        """
+        if self.debug:
+            assert np.intersect1d(subregion_A,subregion_B).size==0 , "Subregion A and B overlap"
+        if vec is None:
+            vec=self.vec_history[-1].copy()
+        if selfaverage:
+            return np.mean([self.tripartite_mutual_information((subregion_A+shift)%self.L,(subregion_B+shift)%self.L,selfaverage=False) for shift in range(len(subregion_A))])
+        else:
+            S_A=self.von_Neumann_entropy_pure(subregion_A,vec=vec,n=n,threshold=threshold)
+            S_B=self.von_Neumann_entropy_pure(subregion_B,vec=vec,n=n,threshold=threshold)
+            S_AB=self.von_Neumann_entropy_pure(np.concatenate([subregion_A,subregion_B]),vec=vec,n=n,threshold=threshold)
+            return S_A+S_B-S_AB
 
     def tripartite_mutual_information(self,subregion_A,subregion_B, subregion_C,selfaverage=False,vec=None,n=1,threshold=1e-10):
         """Calculate tripartite entanglement entropy. The tripartite entanglement entropy is defined as S_A+S_B+S_C-S_AB-S_AC-S_BC+S_ABC, where S_A is the von Neumann entropy of subregion A, S_AB is the von Neumann entropy of subregion A and B, etc. The system size `L` should be a divided by 4 such that the subregion A, B and C are of the same size.

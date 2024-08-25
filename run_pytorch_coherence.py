@@ -26,7 +26,8 @@ def convert_x0(xj,L):
     if xj == [Fraction(1,3),Fraction(2,3)]:
         return Fraction(((int(Fraction(1,3)*(2<<(L//2-1)))<<(L//2))+((1-(L//2%2))<<(L//2-1))),2**L)
     elif xj==[0]:
-        return Fraction(1<<(L//2-1),1<<L)
+        # return Fraction(1<<(L//2-1),1<<L)
+        return Fraction(1,1<<L)
 def get_rho_av(wf):
     """abs(wf) @ abs(wf)"""
 

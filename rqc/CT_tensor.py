@@ -487,6 +487,40 @@ class CT_tensor:
             S_A=self.von_Neumann_entropy_pure(np.arange(self.L//2),vec,n=n,threshold=threshold,sv=sv)
         return S_A
 
+    def bipartite_mutual_information(self,subregion_A,subregion_B,selfaverage=False,vec=None,n=1,threshold=1e-10,sv=False):
+        """Calculate bipartite entanglement entropy. The bipartite entanglement entropy is defined as S_A+S_B-S_AB. 
+        
+        Parameters
+        ----------
+        subregion_A : list of int or torch.tensor
+            subregion A
+        subregion_B : list of int or torch.tensor
+            subregion B
+        selfaverage : bool, optional
+            if true, average over all possible partitions, by default False, by default False
+        vec : torch.tensor, optional
+            state vector, by default None
+
+        Returns
+        -------
+        torch.tensor
+            Tripartite entanglement entropy
+        """
+        if self.debug:
+            assert np.intersect1d(subregion_A,subregion_B).size==0 , "Subregion A and B overlap"
+        if vec is None:
+            vec=self.vec
+        if selfaverage:
+            return torch.mean([self.ipartite_mutual_information((subregion_A+shift)%self.L,(subregion_B+shift)%self.L,selfaverage=False) for shift in range(len(subregion_A))])
+        else:
+            S_A=self.von_Neumann_entropy_pure(subregion_A,vec=vec,n=n,threshold=threshold,sv=sv)
+            S_B=self.von_Neumann_entropy_pure(subregion_B,vec=vec,n=n,threshold=threshold,sv=sv)
+            S_AB=self.von_Neumann_entropy_pure(np.concatenate([subregion_A,subregion_B]),vec=vec,n=n,threshold=threshold,sv=sv)
+        if sv:
+            return {'S_A':S_A,'S_B':S_B,'S_AB':S_AB}
+        return S_A+ S_B -S_AB
+
+
     def tripartite_mutual_information(self,subregion_A,subregion_B, subregion_C,selfaverage=False,vec=None,n=1,threshold=1e-10,sv=False):
         """Calculate tripartite entanglement entropy. The tripartite entanglement entropy is defined as S_A+S_B+S_C-S_AB-S_AC-S_BC+S_ABC, where S_A is the von Neumann entropy of subregion A, S_AB is the von Neumann entropy of subregion A and B, etc. The system size `L` should be a divided by 4 such that the subregion A, B and C are of the same size.
 

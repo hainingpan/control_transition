@@ -26,13 +26,13 @@ def run_tensor(inputs):
         ct.random_control(p_ctrl=p_ctrl,p_proj=p_proj)
         torch.cuda.empty_cache()
     if not ancilla:
-        ct.normalize_(ct.vec)
+        # ct.normalize_(ct.vec) This is problematic
         O=ct.order_parameter()
         SA=ct.half_system_entanglement_entropy()
         TMI=ct.tripartite_mutual_information(np.arange(ct.L//4),np.arange(ct.L//4)+ct.L//4,np.arange(ct.L//4)+(ct.L//4)*2,selfaverage=False)
         return O,SA, TMI
     else:
-        ct.normalize_(ct.vec)
+        # ct.normalize_(ct.vec) This is problematic
         SA=ct.von_Neumann_entropy_pure([ct.L])
         return SA,
 

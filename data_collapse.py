@@ -184,7 +184,7 @@ class DataCollapse:
 
 
 
-    def plot_data_collapse(self,ax=None,drift=False,driftcollapse=False,plot_irrelevant=True,errorbar=False,**kwargs):
+    def plot_data_collapse(self,ax=None,drift=False,driftcollapse=False,plot_irrelevant=True,errorbar=False,abs=False,**kwargs):
         import matplotlib.pyplot as plt
         x_i=(self.p_i-self.p_c)*(self.L_i)**(1/self.nu)
         # x_i=self.p_i
@@ -203,19 +203,33 @@ class DataCollapse:
             color=next(color_iter)
             if drift:
                 if not driftcollapse:
-                    ax.errorbar(self.p_i[start_idx:end_idx], self.y_i[start_idx:end_idx], label=f'{L}', color=color, yerr=self.d_i[start_idx:end_idx], capsize=2, fmt='x',linestyle="None")
-                    ax.plot(self.p_i[start_idx:end_idx],self.y_i_fitted[start_idx:end_idx],label=f'{L}',color=color,**kwargs)
+                    if abs:
+                        x=np.abs(self.p_i[start_idx:end_idx])
+                    else:
+                        x=(self.p_i[start_idx:end_idx])
+                    print(x_i)
+                    ax.errorbar(x, self.y_i[start_idx:end_idx], label=f'{L}', color=color, yerr=self.d_i[start_idx:end_idx], capsize=2, fmt='x',linestyle="None")
+
+                    ax.plot(x,self.y_i_fitted[start_idx:end_idx],label=f'{L}',color=color,**kwargs)
                 else:
-                    ax.scatter(x_i[start_idx:end_idx],self.y_i_minus_irrelevant[start_idx:end_idx],label=f'{L}',color=color,**kwargs)
+                    if abs:
+                        x=np.abs(x_i[start_idx:end_idx])
+                    else:
+                        x=(x_i[start_idx:end_idx])
+                    ax.scatter(x,self.y_i_minus_irrelevant[start_idx:end_idx],label=f'{L}',color=color,**kwargs)
                     if plot_irrelevant:
                         color_r=next(color_r_iter)
-                        ax2.scatter(x_i[start_idx:end_idx],self.y_i_irrelevant[start_idx:end_idx],label=f'{L}',color=color_r,**kwargs)
+                        ax2.scatter(x,self.y_i_irrelevant[start_idx:end_idx],label=f'{L}',color=color_r,**kwargs)
 
             else:
-                if errorbar:
-                    ax.errorbar(x_i[start_idx:end_idx],self.y_i[start_idx:end_idx],yerr=self.d_i[start_idx:end_idx],label=f'{L}',color=color,capsize=3,**kwargs)
+                if abs:
+                    x=np.abs(x_i[start_idx:end_idx])
                 else:
-                    ax.scatter(x_i[start_idx:end_idx],self.y_i[start_idx:end_idx],label=f'{L}',color=color,**kwargs)
+                    x=x_i[start_idx:end_idx]
+                if errorbar:
+                    ax.errorbar(x,self.y_i[start_idx:end_idx],yerr=self.d_i[start_idx:end_idx],label=f'{L}',color=color,capsize=3,**kwargs)
+                else:
+                    ax.scatter(x,self.y_i[start_idx:end_idx],label=f'{L}',color=color,**kwargs)
 
                 
 
@@ -238,7 +252,10 @@ class DataCollapse:
 
                 ax.set_ylabel(r'$y_i-y_{irre}$')
         else:
-            ax.set_xlabel(f'$({{{self.p_}}}_i-{{{self.p_}}}_c){{{self.L_}}}^{{1/\\nu}}$')
+            if abs:
+                ax.set_xlabel(f'$|{{{self.p_}}}_i-{{{self.p_}}}_c|{{{self.L_}}}^{{1/\\nu}}$')
+            else:
+                ax.set_xlabel(f'$({{{self.p_}}}_i-{{{self.p_}}}_c){{{self.L_}}}^{{1/\\nu}}$')
             # ax.set_title(rf'$p_c={self.p_c:.3f},\nu={self.nu:.3f}$')
             try:
                 ax.set_title(rf'${{{self.p_}}}_c$={self.p_c:.3f}$\pm${self.res.params["p_c"].stderr:.3f},$\nu$={self.nu:.3f}$\pm${self.res.params["nu"].stderr:.3f}')

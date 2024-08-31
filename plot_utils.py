@@ -483,7 +483,7 @@ def plot_line(
     # x_name='p'
     # title_name=
     op_str={np.mean:r'\overline',np.var:r'Var~'}
-    ylabel_name={'O':rf'${op_str[method]}{{\langle O \rangle}}$','EE':rf'${op_str[method]}{{ S_{{L/2}} }}$','TMI':rf'${op_str[method]}{{I_3}}$','SA':rf'${op_str[method]}{{ S_{{anc}} }}$','max_bond':rf'${op_str[method]}{{\chi}}$'}
+    ylabel_name={'O':rf'${op_str[method]}{{\langle O \rangle}}$','EE':rf'${op_str[method]}{{ S_{{L/2}} }}$','TMI':rf'${op_str[method]}{{I_3}}$','SA':rf'${op_str[method]}{{ S_{{anc}} }}$','max_bond':rf'${op_str[method]}{{\chi}}$','MI':rf'${op_str[method]}{{I_2}}$'}
     df=df.xs(params.values(),level=list(params.keys()))
     if L_list is None:
         L_list=np.sort(df.index.get_level_values('L').unique())

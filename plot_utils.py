@@ -111,7 +111,8 @@ def add_to_dict(data_dict,data,filename,fixed_params_keys={},skip_keys=set(['off
                     parse_global(data_dict,data,metric,iteration)
 
         elif filename.split('.')[-1] == 'json':
-            if '_DW' in filename or '_T' in filename or '_coherence' in filename:
+            # if '_DW' in filename or '_T' in filename or '_coherence' in filename:
+            if '_T' in filename or '_coherence' in filename:
                 parse_json_T(data_dict,data,metric,iterator,fixed_params_keys,skip_keys)
             else:
                 parse_json(data_dict,data,metric,iterator,fixed_params_keys,skip_keys)

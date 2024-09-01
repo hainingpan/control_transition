@@ -35,14 +35,15 @@ def convert_bitstring_to_dw(L,ZZ=False):
 
 def run_classical(inputs,):
     (L_idx,L),(p_ctrl_idx,p_ctrl),xj,seed,save_T,x0=inputs
-    ct=CT_classical(L=L,seed=seed,xj=xj,x0=x0,store_vec=save_T)
+    ct=CT_classical(L=L,seed=seed,xj=xj,x0=x0,store_vec=save_T,store_op=False,)
     idx=0
-    # dw=convert_bitstring_to_dw(L,ZZ=False if 0 in xj else True)
     for _ in range(2*ct.L**2):
         ct.random_control(p=p_ctrl)
-
-    O=ct.order_parameter()
-    return O,ct.vec_history
+    DW1=ct.dw() # scalar
+    O=ct.order_parameter() # scalar
+    Zi=ct.Zi()  # (L,)
+    
+    return DW1,O,Zi
 
 if __name__=="__main__":
     comm = MPI.COMM_WORLD
@@ -63,27 +64,25 @@ if __name__=="__main__":
     p_ctrl_list=np.linspace(args.p_ctrl[0],args.p_ctrl[1],int(args.p_ctrl[2]))
     st=time.time()
     inputs=[((L_idx,L),(p_ctrl_idx,p_ctrl),xj,seed,args.save_T,args.x0) for L_idx,L in enumerate(L_list) for p_ctrl_idx,p_ctrl in enumerate(p_ctrl_list) for seed in range(args.es)]
+    assert len(L_list) ==1, f'Only one L is allowed, {len(L_list)} is given'
 
-    with h5py.File('CT_En{:d}_pctrl({:.2f},{:.2f},{:.0f})_L({:d},{:d},{:d})_xj({:s})_C{:s}.hdf5'.format(args.es,*args.p_ctrl,*args.L,args.xj.replace('/','-'),'_T'*args.save_T),'w') as f:
-        if args.save_T:
-            # Save all history of wavefunction (as a function of time)
-            datasets={L:f.create_dataset(f'wf_{L}',((len(p_ctrl_list),2*L**2+1,args.es)),dtype=int) for L in L_list}
-        else:
-            # Save only wavefunction (at the end of time evolution)
-            datasets={L:f.create_dataset(f'wf_{L}',((len(p_ctrl_list),1,args.es)),dtype=int) for L in L_list}
-        metric_datasets={metric:f.create_dataset(f'{metric}',((len(p_ctrl_list),len(L_list),args.es)),dtype=float) for metric in ['O',]}
+    with MPIPoolExecutor() as executor:
+        results=list(tqdm(executor.map(run_classical,inputs),total=len(inputs)))
+    
+    DW1_map = np.zeros((1,len(p_ctrl_list),args.es))
+    O_map = np.zeros((1,len(p_ctrl_list),args.es))
+    Zi_map = np.zeros((1,len(p_ctrl_list),args.es,L_list[0]))
 
-        # for param in tqdm(inputs):
-        #     results=run_classical(param)
-        results=tqdm(map(run_classical,inputs),total=len(inputs))
-        # with MPIPoolExecutor() as executor:
-        #     results=list(tqdm(executor.map(run_classical,inputs),total=len(inputs)))
-        
-        for result,input_ in zip(results,inputs):
-            O,vec_history=result
-            (L_idx,L),(p_ctrl_idx,p_ctrl),xj,seed,save_T,x0=input_
-            datasets[L][p_ctrl_idx,:,seed]=vec_history
-            metric_datasets['O'][p_ctrl_idx,L_idx,seed]=O
-            
+    for result,input_ in zip(results,inputs):
+        DW1,O,Zi=result
+        (L_idx,L),(p_ctrl_idx,p_ctrl),xj,seed,save_T,x0=input_
+        DW1_map[0,p_ctrl_idx,seed]=DW1
+        O_map[0,p_ctrl_idx,seed]=O
+        Zi_map[0,p_ctrl_idx,seed]=Zi
+    save_dict={'DW1':DW1_map,'O':O_map,'Zi':Zi_map, 'args':args}
+
+    fn='CT_En{:d}_pctrl({:.2f},{:.2f},{:.0f})_L({:d},{:d},{:d})_xj({:s})_C{:s}.pickle'.format(args.es,*args.p_ctrl,*args.L,args.xj.replace('/','-'),'_T'*args.save_T)
+    with open(fn,'wb') as f:
+        pickle.dump(save_dict,f)
 
     print('Time elapsed: {:.4f}'.format(time.time()-st))

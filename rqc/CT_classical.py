@@ -1,4 +1,4 @@
-from .utils import dec2bin
+from .utils import dec2bin, bin_pad
 
 from fractions import Fraction
 import numpy as np
@@ -160,3 +160,13 @@ class CT_classical:
 
     def Z(self,vec):
         return 1-2*bin(vec).count('1')/self.L
+
+    def Zi(self,vec=None):
+        if vec is None:
+            vec=self.vec_history[-1]
+        return [1-2*int(b) for b in bin_pad(vec,self.L).replace('0b','')]
+    
+    def dw(self,vec=None):
+        if vec is None:
+            vec=self.vec_history[-1]
+        return int(vec).bit_length()

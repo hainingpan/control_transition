@@ -511,7 +511,7 @@ class CT_tensor:
         if vec is None:
             vec=self.vec
         if selfaverage:
-            return torch.mean([self.ipartite_mutual_information((subregion_A+shift)%self.L,(subregion_B+shift)%self.L,selfaverage=False) for shift in range(len(subregion_A))])
+            return torch.mean([self.bipartite_mutual_information((subregion_A+shift)%self.L,(subregion_B+shift)%self.L,selfaverage=False) for shift in range(len(subregion_A))])
         else:
             S_A=self.von_Neumann_entropy_pure(subregion_A,vec=vec,n=n,threshold=threshold,sv=sv)
             S_B=self.von_Neumann_entropy_pure(subregion_B,vec=vec,n=n,threshold=threshold,sv=sv)

@@ -408,7 +408,7 @@ def generate_params(
             all_fns=set(os.listdir(fn_dir))
         else:
             with open(filelist,'r') as f:
-                all_fns=f.read().split('\n')
+                all_fns=set(f.read().split('\n'))
 
     for input0 in tqdm(inputs,mininterval=1,desc='generate_params',total=total):
         dict_params={key:val for key,val in zip(vary_params.keys(),input0)}

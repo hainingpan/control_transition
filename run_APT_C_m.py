@@ -16,9 +16,9 @@ def run(inputs):
         apt.random_cicuit(p_m=p_m,p_f=p_f,even=True)
         apt.random_cicuit(p_m=p_m,p_f=p_f,even=False)
     OP=apt.order_parameter()
-    TMI=apt.tripartite_mutual_information(np.arange(apt.L//4),np.arange(apt.L//4)+apt.L//4,np.arange(apt.L//4)+apt.L//2,selfaverage=True)
-    return OP,TMI
-    # return OP
+    # TMI=apt.tripartite_mutual_information(np.arange(apt.L//4),np.arange(apt.L//4)+apt.L//4,np.arange(apt.L//4)+apt.L//2,selfaverage=True)
+    # return OP,TMI
+    return OP
 
 
 
@@ -50,10 +50,11 @@ if __name__=="__main__":
         results=list(tqdm(executor.map(run,inputs),total=len(inputs)))
     # results=list(map(run,inputs))
     
-    rs=np.array(results).reshape((p_m_list.shape[0],np.abs(p_f_list.shape[0]),es_list.shape[0],es_C_list.shape[0],2))
-    O_map,TMI_map=rs[...,0],rs[...,1]
+    rs=np.array(results).reshape((p_m_list.shape[0],np.abs(p_f_list.shape[0]),es_list.shape[0],es_C_list.shape[0]))
+    # O_map,TMI_map=rs[...,0],rs[...,1]
+    O_map=rs
 
     with open('APT_En({:d},{:d})_EnC({:d},{:d})_pm({:.2f},{:.2f},{:.0f})_pf({:.2f},{:.2f},{:.0f})_L{:d}.pickle'.format(*args.es,*args.es_C,*args.p_m,*args.p_f,args.L),'wb') as f:
-        pickle.dump({"O":O_map,"TMI":TMI_map,"args":args}, f)
+        pickle.dump({"O":O_map,"args":args}, f)
     
     print('Time elapsed: {:.4f}'.format(time()-st))

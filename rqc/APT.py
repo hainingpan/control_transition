@@ -1,6 +1,7 @@
 import numpy as np
+# import jax.numpy as np
 from .utils import U, Haar_state, dec2bin
-from opt_einsum import contract
+from opt_einsum import contract, contract_expression
 class APT:
 # Absorbing phase transition, may need a better name later
     def __init__(self,L,seed=None,seed_vec=None,seed_C=None,x0=None,store_op=False):
@@ -25,6 +26,7 @@ class APT:
         self.sites=np.arange(L)
         self.delta={0:np.array([1,0]),1:np.array([0,1])}  
         self.op_history=[]  
+        self.left_idx={True:np.arange(0,L,2),False:np.arange(1,L,2)}
 
 
     def _initialize_vector(self):
@@ -46,14 +48,10 @@ class APT:
         return vec.reshape((2,)*self.L)
             
     def unitary_layer(self,even=True):
-        left_idx=np.arange(0,self.L,2) if even else np.arange(1,self.L,2)
-        # print(left_idx)
-        for i in left_idx:
+        for i in self.left_idx[even]:
             self.unitary(i)
             if self.store_op:
                 self.op_history.append([i,self.U3.copy()])
-            
-            # print(self.vec)
 
     def unitary(self,i):
         """ applies to (i,i+1)"""
@@ -62,8 +60,6 @@ class APT:
         new_sites=np.arange(self.L)
         new_sites[[l,r]]=self.L,self.L+1
         self.vec=contract(self.vec, self.sites, self.U3, [self.L,self.L+1,l,r], new_sites)
-        # if self.store_op:
-        #     self.op_history.append([[l,r],self.U3.copy()])
 
     def generate_U3(self,rng):
         U3=U(3,rng)

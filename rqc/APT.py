@@ -110,14 +110,14 @@ class APT:
         return np.sum([self.inner_prob(pos=i,n=1) for i in range(self.L)])/self.L
             
     def half_system_entanglement_entropy(self,vec=None,selfaverage=False,n=1,threshold=1e-10):
-        """Calculate the half-system entanglement entropy, where the state vector is `vec`. The half-system entanglement entropy is defined as \sum_{i=0..L/2-1}S_([i,i+L/2)) / (L/2), where S_([i,i+L/2)) is the von Neumann entropy of the subregion [i,i+L/2).
+        """Calculate the half-system entanglement entropy, where the state vector is `vec`. The half-system entanglement entropy is defined as sum_{i=0..L/2-1}S_([i,i+L/2)) / (L/2), where S_([i,i+L/2)) is the von Neumann entropy of the subregion [i,i+L/2).
 
         Parameters
         ----------
         vec : np.array, shape=(2**L_T,) or (2,)*L_T, optional
             state vector, by default None
         selfaverage : bool, optional
-            if true, average over all possible halves, namely, \sum_{i=0..L/2-1}S_([i,i+L/2)) / (L/2), by default False
+            if true, average over all possible halves, namely, sum_{i=0..L/2-1}S_([i,i+L/2)) / (L/2), by default False
 
         Returns
         -------
@@ -132,7 +132,7 @@ class APT:
             return self.von_Neumann_entropy_pure(np.arange(self.L//2),vec,n=n,threshold=threshold)
     
     def von_Neumann_entropy_pure(self,subregion,vec=None,n=1,threshold=1e-10):
-        """Calculate the von Neumann entropy of a pure state, where the state vector is `vec` and the subregion is `subregion`. Using the Schmidt decomposition, the von Neumann entropy is -\sum_i \lambda_i^2 \log \lambda_i^2, where \lambda_i is the singular value of the reshaped state vector `vec`.
+        """Calculate the von Neumann entropy of a pure state, where the state vector is `vec` and the subregion is `subregion`. Using the Schmidt decomposition, the von Neumann entropy is -sum_i lambda_i^2 log lambda_i^2, where lambda_i is the singular value of the reshaped state vector `vec`.
 
         Parameters
         ----------

@@ -2,11 +2,10 @@ from plot_utils import *
 L=12
 sC_list=range(500)
 sm_list=range(500)
-p_m_list=[0.05]
+p_m_list=[0.05,0.06,0.07,0.08,0.09,0.1,0.11,0.12,0.13,0.14,0.15]
 params_list=[
 ({'L':12,'per_es0':50},{'es0':range(0,500,50),'p_m':p_m_list})
 ]
-# [0.05,0.06,0.07,0.08,0.09,0.1,0.11,0.12,0.13,0.14,0.15]
 
 data_APT_dict={'fn':set()}
 for fixed_params,vary_params in params_list:
@@ -36,10 +35,9 @@ def trajvar(df,L,p_m,sC):
 sC_traj_var={}
 for p in p_m_list:
     print(p)
-    for sC in sC_list:
-        sC_traj_var[(p,L)]=[]
-        for sC in range(500):
-            sC_traj_var[(p,L)].append(trajvar(data_APT,L=L,p_m=p,sC=sC))
+    sC_traj_var[(p,L)]=[]
+    for sC in range(500):
+        sC_traj_var[(p,L)].append(trajvar(data_APT,L=L,p_m=p,sC=sC))
     sC_traj_var[(p,L)]=np.array(sC_traj_var[(p,L)])
 
 with open(f'traj_var_C_m_T_APT_L{L}.pickle','wb') as f:

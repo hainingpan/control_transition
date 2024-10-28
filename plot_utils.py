@@ -75,27 +75,41 @@ def add_to_dict(data_dict,data,filename,fixed_params_keys={},skip_keys=set(['off
         raise ValueError(f'{filename} does not have args')
     
     if filename.split('.')[-1] == 'pickle':
-        L_list=np.arange(*data['args'].L)
+        if not hasattr(data['args'],'p_m') and hasattr(data['args'],'p_f'):
+            L_list=np.arange(*data['args'].L)
         if hasattr(data['args'],'p_ctrl'):
             p_ctrl_list=np.round(np.linspace(data['args'].p_ctrl[0],data['args'].p_ctrl[1],int(data['args'].p_ctrl[2])),3)
         if hasattr(data['args'],'p_proj'):
             p_proj_list=np.round(np.linspace(data['args'].p_proj[0],data['args'].p_proj[1],int(data['args'].p_proj[2])),3)
         if hasattr(data['args'],'p_global'):
             p_global_list=np.round(np.linspace(data['args'].p_global[0],data['args'].p_global[1],int(data['args'].p_global[2])),3)
+        if hasattr(data['args'],'p_m') and hasattr(data['args'],'p_f'):
+            p_m_list=np.round(np.linspace(data['args'].p_m[0],data['args'].p_m[1],int(data['args'].p_m[2])),3)
+            p_f_list=np.round(np.linspace(data['args'].p_f[0],data['args'].p_f[1],int(data['args'].p_f[2])),3)
+            es_C_list=np.arange(*data['args'].es_C)
+            es_m_list=np.arange(*data['args'].es)
+            # T_list=np.arange(1,40*data['args'].L+1)   # for efficiency consideration
 
     for metric in set(data.keys())-set(['args']):
         # Save each metrics
         if filename.split('.')[-1] == 'pickle':
-            if not hasattr(data['args'],'p_global'):
-                iteration_list=product(enumerate(L_list),enumerate(p_ctrl_list),enumerate(p_proj_list))
-            else:
+            if hasattr(data['args'],'p_m') and hasattr(data['args'],'p_f'):
+                iteration_list=product(enumerate([data['args'].L]),enumerate(p_m_list),enumerate(p_f_list),enumerate(es_C_list),enumerate(es_m_list))
+            elif hasattr(data['args'],'p_global'):
                 iteration_list=product(enumerate(L_list),enumerate(p_ctrl_list),enumerate(p_proj_list),enumerate(p_global_list))
+            else:
+                iteration_list=product(enumerate(L_list),enumerate(p_ctrl_list),enumerate(p_proj_list))
+                
             for iteration in iteration_list:
                 # Iterate over parameters
                 if not hasattr(data['args'],'p_global'):
                     # (L_idx,L),(p_ctrl_idx,p_ctrl),(p_proj_idx,p_proj)=iteration
-                    if filename.split('.')[-2][-2:]=='_T':
+                    if 'APT' in filename and 'T' in filename:
+                        parse_APT_T(data_dict,data,metric,iteration)
+                    
+                    elif filename.split('.')[-2][-2:]=='_T':
                         parse_T(data_dict,data,metric,iteration)
+                    
 
                     elif isinstance(data[metric],dict):
                         # For singular value, TMI
@@ -140,6 +154,13 @@ def parse_T(data_dict,data,metric,iteration):
             data_dict[params]=np.concatenate([data_dict[params],observations_T_idx])
         else:
             data_dict[params]=observations_T_idx
+def parse_APT_T(data_dict,data,metric,iteration):
+    """parse APT (absorbind transition) data as a function of time T"""
+    (L_idx,L),(p_m_idx,p_m),(p_f_idx,p_f),(es_C_idx,es_C),(es_m_idx,es_m)=iteration
+    # This is reversed ``es_m_idx,es_C_idx`` for historical reason
+    observations=data[metric][p_m_idx,p_f_idx,es_m_idx,es_C_idx]
+    params=(metric,L,p_m,p_f,es_C,es_m)
+    data_dict[params]=observations
 
 def parse_TMI_sv(data_dict,data,metric,iteration):
     (L_idx,L),(p_ctrl_idx,p_ctrl),(p_proj_idx,p_proj)=iteration

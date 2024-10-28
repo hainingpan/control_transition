@@ -1,8 +1,9 @@
 #!/bin/bash
 
 # Configuration
-START_NUM=1 # this is the left over of params_1_3_ctrl.txt
-END_NUM=line_count=4
+START_NUM=790 # this is the left over of params_1_3_ctrl.txt
+END_NUM=1101
+# END_NUM=6600
 TEMPLATE_FILE="run_APT_noDocker.sh"
 
 

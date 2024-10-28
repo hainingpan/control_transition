@@ -12,11 +12,13 @@ from fractions import Fraction
 def run(inputs):
     L, p_m,p_f,seed, seed_C  = inputs
     apt=APT(L=L,x0=Fraction(2**L-1,2**L),seed=seed,seed_C=seed_C,seed_vec=None,store_op=False)
-    for i in range(2*apt.L):
+    # for i in range(2*apt.L):
+    OP_list=[]
+    for i in range(40*apt.L):
         apt.random_cicuit(p_m=p_m,p_f=p_f,even=True)
         apt.random_cicuit(p_m=p_m,p_f=p_f,even=False)
-    OP=apt.order_parameter()
-    return OP
+        OP_list.append(apt.order_parameter())
+    return OP_list
 
 
 
@@ -39,6 +41,7 @@ if __name__=="__main__":
         inputs=[(args.L, p_m,p_m,idx,idx_C) for p_m in p_m_list for p_f in p_f_list for idx in es_list for idx_C in es_C_list]
         
     else:
+        # Ok this is opposite by mistake-- the order of idx and idx_C should be reversed, anyway the entire dataset is still fine, so I will keep it as it is.
         p_f_list=np.linspace(args.p_f[0],args.p_f[1],int(args.p_f[2]))
         inputs=[(args.L, p_m,p_f,idx,idx_C) for p_m in p_m_list for p_f in p_f_list for idx in es_list for idx_C in es_C_list]
     st=time()

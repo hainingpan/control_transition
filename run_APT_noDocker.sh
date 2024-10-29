@@ -24,7 +24,7 @@ export MKL_NUM_THREADS=2
 export NUMEXPR_NUM_THREADS=2
 export OPENBLAS_NUM_THREADS=2
 
-PARAMS_FILE="$PWD/params_APT.txt"
+PARAMS_FILE="$PWD/params_APT_2.txt"
 read -r es0 es1 esC0 esC1 p_m L <<< $(sed -n "ARRARIDXp" $PARAMS_FILE)
 
 echo $es0 $es1 $esC0 $esC1 $p_m $L

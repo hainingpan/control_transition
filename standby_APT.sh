@@ -2,7 +2,7 @@
 
 # Configuration
 START_NUM=1 # this is the left over of params_1_3_ctrl.txt
-END_NUM=220
+END_NUM=2086
 # START_NUM=790 # this is the left over of params_1_3_ctrl.txt
 # END_NUM=1101
 # END_NUM=6600

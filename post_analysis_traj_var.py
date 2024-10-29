@@ -6,8 +6,8 @@ sm_list=range(500)
 # p_m_list=[0.05,0.06,0.07,0.08,0.09,0.1,0.11,0.12,0.13,0.14,0.15]
 # p_m_list=[0.07,0.08,0.09,0.1,0.11,]
 params_list=[
-# ({'L':12,'per_es0':50},{'es0':range(0,500,50),'p_m':p_m_list})
-({'L':14,'per_es0':5},{'es0':range(0,500,5),'p_m':[0.07,0.08,0.09,0.1,0.11,]})
+({'L':12,'per_es0':50},{'es0':range(0,500,50),'p_m':[0.07,0.08,0.09,0.095,0.1,0.105,0.11,]})
+# ({'L':14,'per_es0':5},{'es0':range(0,500,5),'p_m':[0.07,0.08,0.09,0.095,0.1,0.105,0.11,]})
 
 ]
 L=params_list[0][0]['L']
@@ -18,9 +18,9 @@ for fixed_params,vary_params in params_list:
     data_APT_dict=generate_params(
         fixed_params=fixed_params,
         vary_params=vary_params,
-        fn_template='APT_En({es0},{es0+per_es0})_EnC(0,500)_pm({p_m:.2f},{p_m:.2f},1)_pf(1.00,1.00,1)_L{L}_T.pickle',
-        # fn_dir_template='APT_T',
-        fn_dir_template='/home/jake/Data/APT_T',
+        fn_template='APT_En({es0},{es0+per_es0})_EnC(0,500)_pm({p_m:.3f},{p_m:.3f},1)_pf(1.000,1.000,1)_L{L}_T.pickle',
+        fn_dir_template='APT_T',
+        # fn_dir_template='/home/jake/Data/APT_T',
         input_params_template='{p:.3f} {L} {seed} {ancilla}',
         load_data=load_pickle,
         filename=None,

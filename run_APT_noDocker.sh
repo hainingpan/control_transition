@@ -3,7 +3,7 @@
 #SBATCH --requeue
 #SBATCH --time=5:00:00
 #SBATCH --nodes=1
-#SBATCH --ntasks=20
+#SBATCH --ntasks=14
 #SBATCH --mem=64000
 #SBATCH --cpus-per-task=2
 #SBATCH --output=ARRARIDX.out

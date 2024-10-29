@@ -32,7 +32,7 @@ def trajvar(df,L,p_m,sC):
     # single=[data.xs(sm,level='sm').loc['O']['observations'] for sm in sm_list]
     single = np.vstack(data.xs('O',level='Metrics')['observations'])
 
-    return single.var(axis=-1)
+    return single.var(axis=0)
 
 sC_traj_var={}
 for p in p_m_list:

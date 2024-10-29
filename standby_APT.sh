@@ -1,8 +1,10 @@
 #!/bin/bash
 
 # Configuration
-START_NUM=790 # this is the left over of params_1_3_ctrl.txt
-END_NUM=1101
+START_NUM=1785 # this is the left over of params_1_3_ctrl.txt
+END_NUM=2946
+# START_NUM=790 # this is the left over of params_1_3_ctrl.txt
+# END_NUM=1101
 # END_NUM=6600
 TEMPLATE_FILE="run_APT_noDocker.sh"
 
@@ -27,8 +29,8 @@ for (( ARR=START_NUM; ARR<=END_NUM; ARR++ )); do
     echo "checking ${ARR}"
     num_pending=$(squeue --states=PENDING -u hp636| tail -n +2 | wc -l)
 
-    # If pending jobs are less than 150, try to submit a new job
-    if (( num_pending < 70 )); then
+    # If pending jobs are less than 50, try to submit a new job
+    if (( num_pending < 50 )); then
       if submit_job $ARR; then
         echo "$(date +"%Y-%m-%d %T"):Job for ARR=${ARR} submitted."
         break # Job submitted, exit the loop to submit next job
@@ -38,6 +40,6 @@ for (( ARR=START_NUM; ARR<=END_NUM; ARR++ )); do
     else
       echo "$(date +"%Y-%m-%d %T"): There are currently ${num_pending} pending jobs. Waiting to submit job for ARR=${ARR}..."
     fi
-    sleep 60 # Wait for 5 seconds before checking again
+    sleep 300 # Wait for 5 min before checking again
   done
 done

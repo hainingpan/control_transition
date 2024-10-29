@@ -50,10 +50,10 @@ if __name__=="__main__":
         results=list(tqdm(executor.map(run,inputs),total=len(inputs)))
     # results=list(tqdm(map(run,inputs)))
     
-    rs=np.array(results).reshape((p_m_list.shape[0],np.abs(p_f_list.shape[0]),es_list.shape[0],es_C_list.shape[0]))
+    rs=np.array(results).reshape((p_m_list.shape[0],np.abs(p_f_list.shape[0]),es_list.shape[0],es_C_list.shape[0],-1))
     O_map=rs
 
-    with open('APT_En({:d},{:d})_EnC({:d},{:d})_pm({:.2f},{:.2f},{:.0f})_pf({:.2f},{:.2f},{:.0f})_L{:d}.pickle'.format(*args.es,*args.es_C,*args.p_m,*args.p_f,args.L),'wb') as f:
+    with open('APT_En({:d},{:d})_EnC({:d},{:d})_pm({:.2f},{:.2f},{:.0f})_pf({:.2f},{:.2f},{:.0f})_L{:d}_T.pickle'.format(*args.es,*args.es_C,*args.p_m,*args.p_f,args.L),'wb') as f:
         pickle.dump({"O":O_map,"args":args}, f)
     
     print('Time elapsed: {:.4f}'.format(time()-st))

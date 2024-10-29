@@ -1,7 +1,7 @@
 #!/bin/bash
 #SBATCH --partition=main
 #SBATCH --requeue
-#SBATCH --time=8:00:00
+#SBATCH --time=5:00:00
 #SBATCH --nodes=1
 #SBATCH --ntasks=20
 #SBATCH --mem=64000
@@ -15,7 +15,14 @@ module purge
 
 module load python/3.9.6-gc563
 module load intel/17.0.4
-module load gcc/11.2/openmpi/4.1.6-ez82
+# module load gcc/11.2/openmpi/4.1.6-ez82
+# module load gcc/12.3
+module load openmpi/4.1.6
+
+export OMP_NUM_THREADS=2
+export MKL_NUM_THREADS=2
+export NUMEXPR_NUM_THREADS=2
+export OPENBLAS_NUM_THREADS=2
 
 PARAMS_FILE="$PWD/params_APT.txt"
 read -r es0 es1 esC0 esC1 p_m L <<< $(sed -n "ARRARIDXp" $PARAMS_FILE)

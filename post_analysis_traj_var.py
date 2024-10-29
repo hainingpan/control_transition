@@ -19,8 +19,8 @@ for fixed_params,vary_params in params_list:
         fixed_params=fixed_params,
         vary_params=vary_params,
         fn_template='APT_En({es0},{es0+per_es0})_EnC(0,500)_pm({p_m:.2f},{p_m:.2f},1)_pf(1.00,1.00,1)_L{L}_T.pickle',
-        fn_dir_template='APT_T',
-        # fn_dir_template='/home/jake/Data/APT_T',
+        # fn_dir_template='APT_T',
+        fn_dir_template='/home/jake/Data/APT_T',
         input_params_template='{p:.3f} {L} {seed} {ancilla}',
         load_data=load_pickle,
         filename=None,
@@ -47,6 +47,7 @@ for p in p_m_list:
     for sC in tqdm(range(500)):
         sC_traj_var[(p,L)].append(trajvar(data_APT,L=L,p_m=p,sC=sC))
     sC_traj_var[(p,L)]=np.array(sC_traj_var[(p,L)])
+    print(sC_traj_var[(p,L)].shape)
 
 with open(f'traj_var_C_m_T_APT_L{L}.pickle','wb') as f:
     pickle.dump(sC_traj_var,f)

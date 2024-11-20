@@ -36,7 +36,7 @@ class DataCollapse:
         d_i=(self.df.apply(np.std).values)/np.sqrt(self.df.apply(len).values)
         # d_i=(self.df.apply(np.std).values)
         y_i=(self.df.apply(np.mean).values)
-        assert np.unique(p_i).shape[0]>=4, f'not enough data points {np.unique(p_i).shape[0]}'
+        # assert np.unique(p_i).shape[0]>=4, f'not enough data points {np.unique(p_i).shape[0]}'
         return L_i,p_i,d_i,y_i   
 
     
@@ -189,7 +189,7 @@ class DataCollapse:
 
 
 
-    def plot_data_collapse(self,ax=None,drift=False,driftcollapse=False,plot_irrelevant=True,errorbar=False,abs=False,**kwargs):
+    def plot_data_collapse(self,ax=None,drift=False,driftcollapse=False,plot_irrelevant=True,errorbar=False,abs=False,color_iter=None,**kwargs):
         import matplotlib.pyplot as plt
         x_i=(self.p_i-self.p_c)*(self.L_i)**(1/self.nu)
         y_i= self.y_i*self.L_i**(self.beta/self.nu)
@@ -201,7 +201,8 @@ class DataCollapse:
         idx_list=[0]+(np.cumsum([self.df.xs(key=L,level=self.L_).shape[0] for L in L_list])).tolist()
         L_dict={L:(start_idx,end_idx) for L,start_idx,end_idx in zip(L_list,idx_list[:-1],idx_list[1:])}
         # color_iter=iter(plt.cm.rainbow(np.linspace(0,1,len(L_list))))
-        color_iter = iter(plt.cm.Blues(0.4+0.6*(i/L_list.shape[0])) for i in range(L_list.shape[0]))
+        if color_iter is None:
+            color_iter = iter(plt.cm.Blues(0.4+0.6*(i/L_list.shape[0])) for i in range(L_list.shape[0]))
         color_r_iter = iter(plt.cm.Reds(0.4+0.6*(i/L_list.shape[0])) for i in range(L_list.shape[0]))
         if drift and driftcollapse and plot_irrelevant:
             ax2=ax.twinx()

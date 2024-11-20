@@ -4,10 +4,13 @@ from tqdm import tqdm
 sC_list=range(500)
 sm_list=range(500)
 # p_m_list=[0.05,0.06,0.07,0.08,0.09,0.1,0.11,0.12,0.13,0.14,0.15]
-# p_m_list=[0.07,0.08,0.09,0.1,0.11,]
+# p_m_list=[0.07,0.08,0.085,0.087,0.089,0.09,0.091,0.093,0.095,0.1,0.105,0.11,]
+p_m_list=[0.09]
 params_list=[
-# ({'L':12,'per_es0':50},{'es0':range(0,500,50),'p_m':[0.07,0.08,0.09,0.095,0.1,0.105,0.11,]})
-({'L':14,'per_es0':5},{'es0':range(0,500,5),'p_m':[0.07,0.08,0.09,0.095,0.1,0.105,0.11,]})
+# ({'L':12,'per_es0':50},{'es0':range(0,500,50),'p_m':p_m_list}),
+# ({'L':14,'per_es0':10},{'es0':range(0,500,10),'p_m':p_m_list}),
+({'L':16,'per_es0':5},{'es0':range(0,500,5),'p_m':p_m_list}),
+# ({'L':18,'per_es0':2},{'es0':range(0,500,2),'p_m':p_m_list}),
 
 ]
 L=params_list[0][0]['L']
@@ -45,7 +48,10 @@ for p in p_m_list:
     print(p)
     sC_traj_var[(p,L)]=[]
     for sC in tqdm(range(500)):
-        sC_traj_var[(p,L)].append(trajvar(data_APT,L=L,p_m=p,sC=sC))
+        try:
+            sC_traj_var[(p,L)].append(trajvar(data_APT,L=L,p_m=p,sC=sC))
+        except:
+            pass
     sC_traj_var[(p,L)]=np.array(sC_traj_var[(p,L)])
     print(sC_traj_var[(p,L)].shape)
 

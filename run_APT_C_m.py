@@ -13,8 +13,9 @@ def run(inputs):
     L, p_m,p_f,seed, seed_C  = inputs
     apt=APT(L=L,x0=Fraction(2**L-1,2**L),seed=seed,seed_C=seed_C,seed_vec=None,store_op=False)
     # for i in range(2*apt.L):
+    tf = int(10*apt.L**1.6)
     OP_list=[]
-    for i in range(40*apt.L):
+    for i in range(tf):
         apt.random_cicuit(p_m=p_m,p_f=p_f,even=True)
         apt.random_cicuit(p_m=p_m,p_f=p_f,even=False)
         OP_list.append(apt.order_parameter())
@@ -46,7 +47,7 @@ if __name__=="__main__":
         inputs=[(args.L, p_m,p_f,idx,idx_C) for p_m in p_m_list for p_f in p_f_list for idx in es_list for idx_C in es_C_list]
     st=time()
 
-    with MPIPoolExecutor() as executor:
+    with MPIPoolExecutor(max_workers=20) as executor:
         results=list(tqdm(executor.map(run,inputs),total=len(inputs)))
     # results=list(tqdm(map(run,inputs)))
     

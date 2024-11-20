@@ -5,7 +5,7 @@
 # START_NUM=749 # this is the left over of params_1-3,2-3_anc_ctrl.txt
 # START_NUM=2357 this is the left over of params_0_ctrl.txt
 START_NUM=1 # this is the left over of params_1_3_ctrl.txt
-END_NUM=1623
+END_NUM=2000
 TEMPLATE_FILE="run_pytorch_sweep.sh"
 
 # Function to submit job with a given ARR value

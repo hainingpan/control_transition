@@ -7,7 +7,6 @@ from tqdm import tqdm
 from fractions import Fraction
 import torch
 import gc
-import h5py
 
 
 def convert_to_fraction(fraction_str):

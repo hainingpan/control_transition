@@ -8,8 +8,6 @@ from fractions import Fraction
 import torch
 import gc
 import h5py
-from coherence import get_coherence_matrix
-from opt_einsum import contract
 
 
 def convert_to_fraction(fraction_str):
@@ -29,25 +27,6 @@ def convert_x0(xj,L):
     elif xj==[0]:
         # return Fraction(1<<(L//2-1),1<<L)
         return Fraction(1,1<<L)
-def get_rho_av(wf):
-    """abs(wf) @ abs(wf)"""
-
-    ensemble_size= wf.shape[-1]
-    L=len(wf.shape)-1
-    index_1=list(range(L))+[2*L]
-    index_2=list(range(L,2*L))+[2*L]
-    index_final=list(range(2*L))
-    wf=wf.abs()
-    rho_av=(contract(wf,index_1,wf,index_2,index_final)/ensemble_size)
-    return rho_av
-
-
-def get_coherence(wf):
-    
-    rho_av=get_rho_av(wf)
-    coherence_matrix, _=get_coherence_matrix(rho_av)
-
-    return torch.from_numpy(coherence_matrix)
 
 def get_total_coherence(wf):
     # wf.shape = (2,2,...,2,C,M), assume M=1

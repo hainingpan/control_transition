@@ -1,7 +1,7 @@
 #!/bin/bash
-##SBATCH --gres=gpu:1
-##SBATCH --partition=gpu
-##SBATCH --exclude=cuda00[1-8],gpuc00[1-2],pascal0[01-10],volta0[01-03],gpu0[05-14],gpu0[17-18]
+#SBATCH --gres=gpu:1
+#SBATCH --partition=gpu
+#SBATCH --exclude=cuda00[1-8],gpuc00[1-2],pascal0[01-10],volta0[01-03],gpu0[05-14],gpu0[17-18]
 #SBATCH --partition=main
 #SBATCH --time=20:00:00
 #SBATCH --ntasks=1

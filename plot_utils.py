@@ -158,7 +158,8 @@ def parse_APT_T(data_dict,data,metric,iteration):
     """parse APT (absorbind transition) data as a function of time T"""
     (L_idx,L),(p_m_idx,p_m),(p_f_idx,p_f),(es_C_idx,es_C),(es_m_idx,es_m)=iteration
     # This is reversed ``es_m_idx,es_C_idx`` for historical reason
-    observations=data[metric][p_m_idx,p_f_idx,es_m_idx,es_C_idx]
+    # Now I fix it
+    observations=data[metric][p_m_idx,p_f_idx,es_C_idx,es_m_idx]
     params=(metric,L,p_m,p_f,es_C,es_m)
     data_dict[params]=observations
 

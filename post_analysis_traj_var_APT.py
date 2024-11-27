@@ -9,7 +9,7 @@ p_m_list=[0.07,0.08,0.085,0.087,0.089,0.09,0.091,0.093,0.095,0.1,0.105,0.11,]
 
 def trajvar(df,sC):
     data=df.xs(sC,level='sC')
-    return data.var()
+    return data.var(ddof=0)
     
 sC_traj_var={}
 for p_m in p_m_list:

@@ -2,7 +2,7 @@
 
 # Configuration
 START_NUM=1 # this is the left over of params_1_3_ctrl.txt
-END_NUM=18920
+END_NUM=1600
 # START_NUM=78 # this is the left over of params_1_3_ctrl.txt
 # END_NUM=1101
 # END_NUM=6600
@@ -30,7 +30,7 @@ for (( ARR=START_NUM; ARR<=END_NUM; ARR++ )); do
     num_pending=$(squeue --states=PENDING -u hp636| tail -n +2 | wc -l)
 
     # If pending jobs are less than 50, try to submit a new job
-    if (( num_pending < 50 )); then
+    if (( num_pending < 150 )); then
       if submit_job $ARR; then
         echo "$(date +"%Y-%m-%d %T"):Job for ARR=${ARR} submitted."
         break # Job submitted, exit the loop to submit next job

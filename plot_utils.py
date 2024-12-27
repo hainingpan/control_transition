@@ -85,7 +85,7 @@ def add_to_dict(data_dict,data,filename,fixed_params_keys={},skip_keys=set(['off
             p_global_list=np.round(np.linspace(data['args'].p_global[0],data['args'].p_global[1],int(data['args'].p_global[2])),3)
         if hasattr(data['args'],'p_m') and hasattr(data['args'],'p_f'):
             p_m_list=np.round(np.linspace(data['args'].p_m[0],data['args'].p_m[1],int(data['args'].p_m[2])),3)
-            p_f_list=np.round(np.linspace(data['args'].p_f[0],data['args'].p_f[1],int(data['args'].p_f[2])),3)
+            p_f_list=np.round(np.linspace(data['args'].p_f[0],data['args'].p_f[1],abs(int(data['args'].p_f[2]))),3)
             es_C_list=np.arange(*data['args'].es_C)
             es_m_list=np.arange(*data['args'].es)
             # T_list=np.arange(1,40*data['args'].L+1)   # for efficiency consideration

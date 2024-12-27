@@ -20,8 +20,8 @@ for p_m in p_m_list:
     params_list=[
     # ({'L':12,'per_esC0':50},{'esC0':range(0,2000,50),'p_m':[p_m]}),
     # ({'L':14,'per_esC0':25},{'esC0':range(0,2000,25),'p_m':[p_m]}),
-    # ({'L':16,'per_esC0':10},{'esC0':range(0,2000,10),'p_m':[p_m]}),
-    ({'L':18,'per_esC0':5},{'esC0':range(0,2000,5),'p_m':[p_m]}),
+    ({'L':16,'per_esC0':10},{'esC0':range(0,2000,10),'p_m':[p_m]}),
+    # ({'L':18,'per_esC0':5},{'esC0':range(0,2000,5),'p_m':[p_m]}),
     # ({'L':20,'per_esC0':2},{'esC0':range(0,2000,2),'p_m':[p_m]}),
     ]
     
@@ -31,11 +31,12 @@ for p_m in p_m_list:
         data_APT_dict=generate_params(
             fixed_params=fixed_params,
             vary_params=vary_params,
-            fn_template='APT_EnC({esC0},{esC0+per_esC0})_Enm(0,500)_pm({p_m:.3f},{p_m:.3f},1)_pf(1.000,1.000,1)_L{L}_Tf.pickle',
+            # fn_template='APT_EnC({esC0},{esC0+per_esC0})_Enm(0,500)_pm({p_m:.3f},{p_m:.3f},1)_pf(1.000,1.000,1)_L{L}_Tf.pickle',
+            fn_template='APT_EnC({esC0},{esC0+per_esC0})_Enm(0,500)_pm({p_m:.3f},{p_m:.3f},1)_pf(1.000,1.000,-1)_L{L}_Tf.pickle',
             # fn_dir_template='APT_Tf',
             # fn_dir_template='/home/jake/Data/APT_Tf',
-            fn_dir_template='APT_Tf_diag',
-            # fn_dir_template='/mnt/e/Control_Transition/APT/APT_Tf',
+            # fn_dir_template='APT_Tf_diag',
+            fn_dir_template='/mnt/e/Control_Transition/APT/APT_Tf_diag',
             input_params_template='{p:.3f} {L} {seed} {ancilla}',
             load_data=load_pickle,
             filename=None,

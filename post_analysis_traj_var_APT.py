@@ -4,8 +4,10 @@ from tqdm import tqdm
 sC_list=range(2000)
 sm_list=range(500)
 # p_m_list=[0.05,0.06,0.07,0.08,0.09,0.1,0.11,0.12,0.13,0.14,0.15]
-p_m_list=[0.07,0.08,0.085,0.087,0.089,0.09,0.091,0.093,0.095,0.1,0.105,0.11,]
+# p_m_list=[0.07,0.08,0.085,0.087,0.089,0.09,0.091,0.093,0.095,0.1,0.105,0.11,]
 # p_m_list=[0.09]
+
+p_m_list= [0.29,0.295,0.3,0.305,0.31]
 
 def trajvar(df,sC):
     data=df.xs(sC,level='sC')
@@ -31,7 +33,8 @@ for p_m in p_m_list:
             vary_params=vary_params,
             fn_template='APT_EnC({esC0},{esC0+per_esC0})_Enm(0,500)_pm({p_m:.3f},{p_m:.3f},1)_pf(1.000,1.000,1)_L{L}_Tf.pickle',
             # fn_dir_template='APT_Tf',
-            fn_dir_template='/home/jake/Data/APT_Tf',
+            # fn_dir_template='/home/jake/Data/APT_Tf',
+            fn_dir_template='APT_Tf_diag',
             # fn_dir_template='/mnt/e/Control_Transition/APT/APT_Tf',
             input_params_template='{p:.3f} {L} {seed} {ancilla}',
             load_data=load_pickle,
@@ -53,6 +56,7 @@ for p_m in p_m_list:
     sC_traj_var[(p_m,L)]=np.array(sC_traj_var[(p_m,L)])
     print(sC_traj_var[(p_m,L)].shape)
 
-with open(f'traj_var_C_m_Tf_APT_L{L}.pickle','wb') as f:
+# with open(f'traj_var_C_m_Tf_APT_L{L}.pickle','wb') as f:
+with open(f'traj_var_C_m_Tf_APT_diag_L{L}.pickle','wb') as f:
     pickle.dump(sC_traj_var,f)
         

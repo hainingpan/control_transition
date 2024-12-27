@@ -27,4 +27,7 @@ read -r  esC0 esC1 es0 es1  p_m L <<< $(sed -n "ARRARIDXp" $PARAMS_FILE)
 
 echo $esC0 $esC1 $es0 $es1 $p_m $L
 # srun --mpi=pmi2 python3 -m mpi4py.futures run_APT_C_m.py -es $es0 $es1 -es_C $esC0 $esC1 -p_m $p_m $p_m 1 -p_f 1 1 1 -L $L
-srun --mpi=pmi2 python3 -m mpi4py.futures run_APT_C_m_final.py -es_C $esC0 $esC1 -es $es0 $es1  -p_m $p_m $p_m 1 -p_f 1 1 1 -L $L
+
+# srun --mpi=pmi2 python3 -m mpi4py.futures run_APT_C_m_final.py -es_C $esC0 $esC1 -es $es0 $es1  -p_m $p_m $p_m 1 -p_f 1 1 1 -L $L
+
+srun --mpi=pmi2 python3 -m mpi4py.futures run_APT_C_m_final.py -es_C $esC0 $esC1 -es $es0 $es1  -p_m $p_m $p_m 1 -p_f 1 1 -1 -L $L

@@ -1,8 +1,8 @@
 #!/bin/bash
 
 # Configuration
-START_NUM=1417 # this is the left over of params_1_3_ctrl.txt
-END_NUM=11316
+START_NUM=1 # this is the left over of params_1_3_ctrl.txt
+END_NUM=1600
 # START_NUM=78 # this is the left over of params_1_3_ctrl.txt
 # END_NUM=1101
 # END_NUM=6600

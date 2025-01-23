@@ -14,6 +14,8 @@ def load_json(fn):
 
 def load_zip_json(fn,z):
     return orjson.loads(z.open(fn).read())
+def load_torch_pt(fn):
+    return torch.load(fn, map_location='cpu')
 
 import pickle
 def load_pickle(fn):
@@ -133,12 +135,20 @@ def add_to_dict(data_dict,data,filename,fixed_params_keys={},skip_keys=set(['off
                     parse_json(data_dict,data,metric,iterator,fixed_params_keys,skip_keys)
             else:
                 parse_json(data_dict,data,metric,iterator,fixed_params_keys,skip_keys)
-            # params=(metric,)+tuple(val for key,val in iterator.items() if key != 'seed' and key not in fixed_params_keys and key not in skip_keys)
-
-            # if params in data_dict:
-            #     data_dict[params].append(data[metric])
-            # else:
-            #     data_dict[params]=[data[metric]]
+        elif filename.split('.')[-1] == 'pt':
+            if 'Lx' in data['args']:
+                iteration_list = [(data['args'].Lx,data['args'].Ly,data['args'].nshell,data['args'].mu,data['args'].sigma,data['args'].seed0)]
+            elif 'sigma' in data['args']:
+                iteration_list = [(data['args'].L,data['args'].nshell,data['args'].mu,data['args'].sigma,data['args'].seed0)]
+            else:
+                iteration_list = [(data['args'].L,data['args'].nshell,data['args'].mu,data['args'].seed0)]
+            for iteration in iteration_list:
+                parse_pt(data_dict,data,metric,iteration)
+def parse_pt(data_dict,data,metric,iteration):
+    """parse pytorch tensor"""
+    observations=data[metric]
+    params=(metric,)+iteration
+    data_dict[params]=(observations).numpy()
 
 def parse_T(data_dict,data,metric,iteration):
     """parse data as a function of time T"""

@@ -112,9 +112,12 @@ def add_to_dict(data_dict,data,filename,fixed_params_keys={},skip_keys=set(['off
 
         elif filename.split('.')[-1] == 'json':
             if not '_sC' in filename:
-                if '_DW' in filename or '_T' in filename or '_coherence' in filename:
+                # if '_DW' in filename or '_T' in filename or '_coherence' in filename:
                 # if '_T' in filename or '_coherence' in filename:
+                if '_DW' in filename or '_T' in filename:
                     parse_json_T(data_dict,data,metric,iterator,fixed_params_keys,skip_keys)
+                elif 'sv' in filename:
+                    parse_json_sv(data_dict,data,metric,iterator,fixed_params_keys,skip_keys)
                 else:
                     parse_json(data_dict,data,metric,iterator,fixed_params_keys,skip_keys)
             else:
@@ -204,6 +207,20 @@ def parse_json_T(data_dict,data,metric,iterator,fixed_params_keys,skip_keys):
             data_dict[params_T].append(observations_T_idx)
         else:
             data_dict[params_T]=[observations_T_idx]
+def parse_json_sv(data_dict,data,metric,iterator,fixed_params_keys,skip_keys):
+    # params=(metric,)+tuple(val for key,val in iterator.items() if key != 'seed' and key not in fixed_params_keys and key not in skip_keys)
+    params=(metric,iterator['L'],iterator['p_ctrl'],iterator['p_proj'],iterator['seed'])
+    observations=data[metric]
+    # used for DW with shape (T,)
+    selfaverage_len=len(observations)
+
+    for idx in range(selfaverage_len):
+        params_T=(*params, idx)
+        observations_idx=observations[idx]
+        if params_T in data_dict:
+            data_dict[params_T].append(observations_idx)
+        else:
+            data_dict[params_T]=[observations_idx]
 
 def add_attach_dict(data_dict,params,observations,axis=0,drop_nan=True):
     """if not in dict, add it

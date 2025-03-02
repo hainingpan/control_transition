@@ -77,7 +77,7 @@ def add_to_dict(data_dict,data,filename,fixed_params_keys={},skip_keys=set(['off
         raise ValueError(f'{filename} does not have args')
     
     if filename.split('.')[-1] == 'pickle':
-        if not hasattr(data['args'],'p_m') and hasattr(data['args'],'p_f'):
+        if not (hasattr(data['args'],'p_m') and hasattr(data['args'],'p_f')):
             L_list=np.arange(*data['args'].L)
         if hasattr(data['args'],'p_ctrl'):
             p_ctrl_list=np.round(np.linspace(data['args'].p_ctrl[0],data['args'].p_ctrl[1],int(data['args'].p_ctrl[2])),3)
@@ -118,7 +118,7 @@ def add_to_dict(data_dict,data,filename,fixed_params_keys={},skip_keys=set(['off
                         parse_TMI_sv(data_dict,data,metric,iteration)
                         
 
-                    elif data[metric].dim()>=5:
+                    elif (hasattr(data['args'],'dim') and data[metric].dim()>=5 ):
                         # For singular value, EE
                         parse_EE_sv(data_dict,data,metric,iteration)
                     else:

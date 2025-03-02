@@ -427,7 +427,7 @@ def generate_params(
     
     inputs=product(*vary_params.values())
     # vary_params.values()
-    total=np.product([len(val) for val in vary_params.values()])
+    total=np.prod([len(val) for val in vary_params.values()])
 
 
     if data_dict_file is not None:
@@ -476,8 +476,10 @@ def generate_params(
                             data=load_data(fn_fullpath)
                         else:
                             data=load_data(fn,z)
-                    except:
-                        print(f'Error loading {fn}')
+                    except Exception as e:
+                        print(f'Error loading {fn} {e}')
+                        # with open('error.log','a') as f:
+                        #     f.write(f'{fn}\n')
                         continue
                     add_to_dict(data_dict,data,fn,fixed_params_keys=fixed_params.keys())
         else:

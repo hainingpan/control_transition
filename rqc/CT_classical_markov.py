@@ -226,3 +226,22 @@ class CT_classical_markov:
         fdw = contract(self.fdw_vec , range(self.L),vec,range(self.L)).item()
         fdw2 = contract(self.fdw_vec**2 , range(self.L),vec,range(self.L)).item()
         return fdw, fdw2
+
+    def Z_tensor(self,vec):
+        """Calculate the order parameter for Ferromagnetic state. The order parameter is defined as \sum_{i=0..L-1} <Z_i>, where Z_i is the Pauli Z matrix at site i.
+
+        Parameters
+        ----------
+        vec : numpy.array, shape=(2**L_T,) or (2,)*L_T
+            state vector
+
+        Returns
+        -------
+        float
+            order parameter for ferromagnetic state
+        """
+        rs=0
+        for i in range(self.L):
+            P0=self.inner_prob(vec,pos=[i],n_list=[0])
+            rs+=P0*1+(1-P0)*(-1)
+        return rs/self.L

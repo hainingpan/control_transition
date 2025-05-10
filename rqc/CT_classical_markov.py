@@ -12,6 +12,7 @@ class CT_classical_markov:
         self.vec = self._initialize_vector()
         self.op_list=self._initialize_op()
         self.fdw_vec=self.generate_FDW_vec()
+        self.z_vec=self.generate_Z_vec()
     def _initialize_op(self):
         """Initialize the operators in the circuit, including the control, projection, and Bernoulli map. `C` is the control map, `P` is the projection, `B` is the Bernoulli map, `I` is the identity map. The second element in the tuple is the outcome. The number after "P" is the position of projection (0-index).
 
@@ -226,7 +227,24 @@ class CT_classical_markov:
         fdw = contract(self.fdw_vec , range(self.L),vec,range(self.L)).item()
         fdw2 = contract(self.fdw_vec**2 , range(self.L),vec,range(self.L)).item()
         return fdw, fdw2
+    def generate_Z_vec(self):
+        """generate the sum of Z tensor for each basis"""
+        n_v = np.zeros((2,)*self.L,dtype=float)
+        idx = np.array([slice(None)]*self.L)
+        for i in range(self.L):
+            idx_ = idx.copy()
+            idx_[i] = 1
+            n_v_ = np.zeros((2,)*self.L,dtype=float)
+            n_v_[tuple(idx_)] = 1
+            n_v += n_v_
+        z_v = (1- 2*n_v/self.L)
+        return z_v
+    def Z(self,vec):
+        z = contract(self.z_vec , range(self.L),vec,range(self.L)).item()
+        z2 = contract(self.z_vec**2 , range(self.L),vec,range(self.L)).item()
+        return z, z2
 
+            
     def Z_tensor(self,vec):
         """Calculate the order parameter for Ferromagnetic state. The order parameter is defined as \sum_{i=0..L-1} <Z_i>, where Z_i is the Pauli Z matrix at site i.
 

@@ -3,7 +3,7 @@
 # Configuration
 # START_NUM=5092 # this is for params_0_anc.txt
 START_NUM=1 # this is for params_1_3_ent.txt
-END_NUM=934
+END_NUM=2
 TEMPLATE_FILE="run_pytorch_sweep2.sh"
 
 # Function to submit job with a given ARR value
@@ -31,7 +31,7 @@ for (( ARR=START_NUM; ARR<=END_NUM; ARR++ )); do
     if (( num_pending < 150 )); then
       if submit_job $ARR; then
         echo "$(date +"%Y-%m-%d %T"):Job for ARR=${ARR} submitted."
-        sleep 2
+        sleep 1
         break # Job submitted, exit the loop to submit next job
       else
         echo "$(date +"%Y-%m-%d %T"): Submission failed for ARR=${ARR}. Retrying..."

@@ -62,7 +62,7 @@ if __name__ == "__main__":
     FDW_map, O_map = collect_results(results, p_list, sC_list, sm_list, L)
     
     # Auto-generate output filename based on L
-    output_file = f"markov_L{L}.pickle"
+    output_file = f"markov_L{L}_p{args.p[0]:.2f}.pickle"
     
     # Save results
     with open(output_file, 'wb') as f:

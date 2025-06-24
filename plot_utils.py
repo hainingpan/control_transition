@@ -15,7 +15,8 @@ def load_json(fn):
 def load_zip_json(fn,z):
     return orjson.loads(z.open(fn).read())
 def load_torch_pt(fn):
-    return torch.load(fn, map_location='cpu')
+    return torch.load(fn, map_location='cpu',weights_only=False)
+    
 
 import pickle
 def load_pickle(fn):

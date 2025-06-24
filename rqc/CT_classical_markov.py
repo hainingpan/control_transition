@@ -246,7 +246,7 @@ class CT_classical_markov:
 
             
     def Z_tensor(self,vec):
-        """Calculate the order parameter for Ferromagnetic state. The order parameter is defined as \sum_{i=0..L-1} <Z_i>, where Z_i is the Pauli Z matrix at site i.
+        """Calculate the order parameter for Ferromagnetic state. The order parameter is defined as sum_{i=0..L-1} <Z_i>, where Z_i is the Pauli Z matrix at site i.
 
         Parameters
         ----------

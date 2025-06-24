@@ -19,3 +19,4 @@ Fig/*
 *.bak
 _ipython-input-*-profile
 J*.sh
+obs-del

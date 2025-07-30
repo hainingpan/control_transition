@@ -207,7 +207,9 @@ def parse_global(data_dict,data,metric,iteration):
     add_attach_dict(data_dict,params,observations)
 
 def parse_json(data_dict,data,metric,iterator,fixed_params_keys,skip_keys):
-    params=(metric,)+tuple(val for key,val in iterator.items() if key != 'seed' and key not in fixed_params_keys and key not in skip_keys)
+    # temporarily suppress the masking of "seed"
+    # params=(metric,)+tuple(val for key,val in iterator.items() if key != 'seed' and key not in fixed_params_keys and key not in skip_keys)
+    params=(metric,)+tuple(val for key,val in iterator.items() if key not in fixed_params_keys and key not in skip_keys)
     if params in data_dict:
         # data_dict[params].append(data[metric])
         data_dict[params]=np.vstack([data_dict[params],data[metric]])
@@ -417,13 +419,12 @@ def generate_params(
     from tqdm import tqdm
     import pickle
     
-
+    fn_template_c = compile(f"f'{fn_template}'", '<fstring>', 'eval')
+    input_params_template_c = compile(f"f'{input_params_template}'", '<fstring>', 'eval')
 
     params_text=[]
     if fn_dir=='auto':
-        # fn_dir=fn_dir_template.format(**fixed_params)
         fn_dir=eval(f"f'{fn_dir_template}'", {},  {**locals(),**fixed_params,**vary_params})
-        # eval(f"f'{filename_template}'", {},  locals())
     
     inputs=product(*vary_params.values())
     # vary_params.values()
@@ -465,7 +466,9 @@ def generate_params(
     for input0 in tqdm(inputs,mininterval=1,desc='generate_params',total=total):
         dict_params={key:val for key,val in zip(vary_params.keys(),input0)}
         dict_params.update(fixed_params)
-        fn=eval(f"f'{fn_template}'", {},  {**locals(),**dict_params})
+        # fn=eval(f"f'{fn_template}'", {},  {**locals(),**dict_params})
+        # fn = eval(fn_template_c, {}, {**locals(), **dict_params})
+        fn = fn_template.format( **dict_params)
 
         if load:
             if fn not in data_dict['fn']:
@@ -486,7 +489,9 @@ def generate_params(
             file_exist = fn in all_fns
             
             if not file_exist:
-                params_text.append(eval(f"f'{input_params_template}'", {},  {**locals(),**dict_params}))
+                # params_text.append(eval(f"f'{input_params_template}'", {},  {**locals(),**dict_params}))
+                # params_text.append(eval(input_params_template_c, {}, {**locals(), **dict_params}))
+                params_text.append((input_params_template.format(**dict_params)))
             elif exist:
                 params_text.append(fn)
     if load:

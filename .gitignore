@@ -20,3 +20,5 @@ Fig/*
 _ipython-input-*-profile
 J*.sh
 obs-del
+*.e*
+*.o*

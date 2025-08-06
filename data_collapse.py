@@ -3,7 +3,7 @@ import numpy as np
 class DataCollapse:
     """DataCollapse class, use lmfit"""
     def __init__(self,df,p_,L_,params={'Metrics':'O',},p_range=[-0.1,0.1],Lmin=None,Lmax=None,adaptive_func=None):
-        """fitting following (p_-p_c)* L_^1/nu
+        """fitting following y~L^{-beta/nu} f((p-p_c)L^{1/nu}) 
         the definition of each variable can be reloaded to fit, e..g, tL^{-z}"""
         self.p_range=p_range
         self.Lmin=0 if Lmin is None else Lmin
@@ -206,7 +206,7 @@ class DataCollapse:
         color_r_iter = iter(plt.cm.Reds(0.4+0.6*(i/L_list.shape[0])) for i in range(L_list.shape[0]))
         if drift and driftcollapse and plot_irrelevant:
             ax2=ax.twinx()
-            ax2.set_ylabel(r'$y_{irre}$')
+            ax2.set_ylabel(r'$y_{irre}$')  # TODO: needs to adapt finite beta
         for L,(start_idx,end_idx) in L_dict.items():
             color=next(color_iter)
             if drift:
@@ -240,7 +240,7 @@ class DataCollapse:
 
                 
 
-        ax.set_ylabel(r'$y_i$')
+        ax.set_ylabel(r'$y_i L^{\beta/\nu}$')
         if drift:
             if not driftcollapse:
                 ax.set_xlabel(f'${{{self.p_}}}_i$')
@@ -257,7 +257,7 @@ class DataCollapse:
                 except:
                     ax.set_title(rf'${{{self.p_}}}_c$={self.p_c:.3f},$\nu$={self.nu:.3f},$y$= {self.y:.3f}')
 
-                ax.set_ylabel(r'$y_i-y_{irre}$')
+                ax.set_ylabel(r'$y_i-y_{irre}$') # TODO: needs to adapt finite beta
         else:
             if abs:
                 ax.set_xlabel(f'$|{{{self.p_}}}_i-{{{self.p_}}}_c|{{{self.L_}}}^{{1/\\nu}}$')

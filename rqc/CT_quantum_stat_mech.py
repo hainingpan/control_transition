@@ -1,6 +1,3 @@
-from fractions import Fraction
-import random
-from .utils import dec2bin, bin_pad
 import numpy as np
 
 class CT_quantum_stat_mech:

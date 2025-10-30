@@ -16,7 +16,8 @@ class CT_quantum_stat_mech:
     def _initialize_vector(self):
         '''"0" is for maximal mixed state as <Z>=0
         <1> is for fixed state as <Z>=1'''
-        vec = np.zeros((self.L,))
+        vec = np.ones((self.L,))
+        # vec = np.zeros((self.L,))
         # vec[(0,)*(self.L-2)+(1,0)]=1
         # vec = np.ones((2,)*self.L)/2**self.L
         return vec
@@ -31,6 +32,15 @@ class CT_quantum_stat_mech:
     
     def variance(self):
         return 1/self.L - np.sum(self.vec**2)/self.L**2
+    
+    def variance_FDW(self):
+        positions_from_right = np.arange(self.L, 0, -1)
+        zero_mask = (self.vec == 0)
+        q_values = np.cumsum(zero_mask)
+        weights = 0.5**q_values * zero_mask
+        mean = np.sum(weights * positions_from_right)
+        mean_sq = np.sum(weights * positions_from_right**2)
+        return mean_sq - mean**2 
 
     def random_circuit(self,p):
         prob=self.rng_C.random()

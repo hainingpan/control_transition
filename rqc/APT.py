@@ -201,6 +201,34 @@ class APT:
             S_ABC=self.von_Neumann_entropy_pure(np.concatenate([subregion_A,subregion_B,subregion_C]),vec=vec,n=n,threshold=threshold)
             return S_A+ S_B + S_C-S_AB-S_AC-S_BC+S_ABC
 
+    def quantum_L1_coherence(self, vec=None):
+        """
+        Compute quantum L1 coherence from pure state wave function.
+
+        The quantum L1 coherence is computed as:
+        C_L1 = (sum_i |psi_i|)^2 - 1
+
+        where the sum is over all amplitudes in the wave function.
+
+        Parameters
+        ----------
+        vec : np.array, shape=(2,)*L, optional
+            State vector, by default None (uses self.vec)
+
+        Returns
+        -------
+        float
+            Quantum L1 coherence
+        """
+        if vec is None:
+            vec = self.vec.copy()
+
+        vec_flat = vec.flatten()
+        L1_norm = np.sum(np.abs(vec_flat))
+        coherence = L1_norm**2 - 1
+
+        return coherence
+
 
 
 

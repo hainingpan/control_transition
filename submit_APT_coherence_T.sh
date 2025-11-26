@@ -1,0 +1,42 @@
+#!/bin/bash
+#PBS -A ONRDC54450755
+#PBS -l walltime=4:00:00
+#PBS -q standard
+#PBS -l select=1:ncpus=192:mpiprocs=1
+#PBS -N APT_coherence_T
+#PBS -m abe
+#PBS -M hnpanboa@gmail.com
+#PBS -r y
+#PBS -J 1-3289
+
+# Set number of parallel jobs
+N_JOBS=192
+
+# Setup Python environment
+export PYENV_ROOT="$HOME/.pyenv"
+export PATH="$PYENV_ROOT/bin:$PATH"
+eval "$(pyenv init -)"
+eval "$(pyenv init --path)"
+pyenv shell miniforge3-25.1.1-2
+
+# Create output directory
+mkdir -p $WORKDIR/control_transition/APT_coherence_T
+cd $WORKDIR/control_transition/APT_coherence_T
+
+# Read parameters for this job array index
+PARAMS_FILE="$HOME/control_transition/params_APT_coherence_T.txt"
+read -r L p_m es_start es_end <<< $(sed -n "${PBS_ARRAY_INDEX}p" $PARAMS_FILE)
+
+echo "Job array index: $PBS_ARRAY_INDEX"
+echo "Running with L=$L, p_m=$p_m, ensemble=[$es_start, $es_end)"
+
+# Run the simulation
+python $HOME/control_transition/run_APT_coherence_T.py \
+    --L $L \
+    --es $es_start $es_end \
+    --es_C 1 2 \
+    --p_m $p_m $p_m 1 \
+    --p_f 0 0 -1 \
+    --n_jobs $N_JOBS
+
+echo "Completed L=$L, p_m=$p_m, ensemble=[$es_start, $es_end)"

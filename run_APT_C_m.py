@@ -1,4 +1,4 @@
-from rqc.APT import APT
+from rqc_sv.APT import APT
 import numpy as np
 from mpi4py.futures import MPIPoolExecutor
 from mpi4py import MPI

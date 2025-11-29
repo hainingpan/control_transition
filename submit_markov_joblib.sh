@@ -1,13 +1,13 @@
 #!/bin/bash
 #PBS -A ONRDC54450755
-#PBS -l walltime=4:02:00
+#PBS -l walltime=2:02:00
 #PBS -q standard
 #PBS -l select=1:ncpus=192:mpiprocs=1
 #PBS -N markov
 #PBS -m abe
 #PBS -M hnpanboa@gmail.com
 #PBS -r y
-#PBS -J 1-8
+#PBS -J 1-2
 cd ~/control_transition
 
 # Set the number of parallel jobs to use all available CPUs

@@ -7,7 +7,7 @@
 #PBS -m abe
 #PBS -M hnpanboa@gmail.com
 #PBS -r y
-#PBS -J 1-3289
+#PBS -J 1-243
 
 # Set number of parallel jobs
 N_JOBS=192
@@ -19,24 +19,17 @@ eval "$(pyenv init -)"
 eval "$(pyenv init --path)"
 pyenv shell miniforge3-25.1.1-2
 
-# Create output directory
-mkdir -p $WORKDIR/control_transition/APT_coherence_T
-cd $WORKDIR/control_transition/APT_coherence_T
-
 # Read parameters for this job array index
-PARAMS_FILE="$HOME/control_transition/params_APT_coherence_T.txt"
-read -r L p_m es_start es_end <<< $(sed -n "${PBS_ARRAY_INDEX}p" $PARAMS_FILE)
+PARAMS_FILE="$HOME/control_transition/params_APT_coherence_T_2.txt"
+PARAMS=$(sed -n "${PBS_ARRAY_INDEX}p" $PARAMS_FILE)
 
 echo "Job array index: $PBS_ARRAY_INDEX"
-echo "Running with L=$L, p_m=$p_m, ensemble=[$es_start, $es_end)"
+echo "Parameters: $PARAMS"
 
-# Run the simulation
+# Run the simulation with full parameter string
 python $HOME/control_transition/run_APT_coherence_T.py \
-    --L $L \
-    --es $es_start $es_end \
-    --es_C 1 2 \
-    --p_m $p_m $p_m 1 \
+    $PARAMS \
     --p_f 0 0 -1 \
     --n_jobs $N_JOBS
 
-echo "Completed L=$L, p_m=$p_m, ensemble=[$es_start, $es_end)"
+echo "Completed job array index: $PBS_ARRAY_INDEX"

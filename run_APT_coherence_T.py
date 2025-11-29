@@ -6,6 +6,7 @@ import argparse
 import pickle
 from tqdm import tqdm
 from fractions import Fraction
+import os
 
 
 def run(inputs):
@@ -39,7 +40,6 @@ if __name__=="__main__":
         inputs=[(args.L, p_m,p_m,idx,idx_C) for p_m in p_m_list for p_f in p_f_list for idx in es_list for idx_C in es_C_list]
 
     else:
-        # Ok this is opposite by mistake-- the order of idx and idx_C should be reversed, anyway the entire dataset is still fine, so I will keep it as it is.
         p_f_list=np.linspace(args.p_f[0],args.p_f[1],int(args.p_f[2]))
         inputs=[(args.L, p_m,p_f,idx,idx_C) for p_m in p_m_list for p_f in p_f_list for idx in es_list for idx_C in es_C_list]
     st=time()
@@ -51,7 +51,7 @@ if __name__=="__main__":
     rs=np.array(results).reshape((p_m_list.shape[0],np.abs(p_f_list.shape[0]),es_list.shape[0],es_C_list.shape[0],-1))
     coherence_map=rs
 
-    with open('APT_En({:d},{:d})_EnC({:d},{:d})_pm({:.3f},{:.3f},{:.0f})_pf({:.3f},{:.3f},{:.0f})_L{:d}_coherence_T.pickle'.format(*args.es,*args.es_C,*args.p_m,*args.p_f,args.L),'wb') as f:
+    with open(os.environ['WORKDIR'] + '/control_transition/APT_coherence_T/APT_En({:d},{:d})_EnC({:d},{:d})_pm({:.3f},{:.3f},{:.0f})_pf({:.3f},{:.3f},{:.0f})_L{:d}_coherence_T.pickle'.format(*args.es,*args.es_C,*args.p_m,*args.p_f,args.L),'wb') as f:
         pickle.dump({"coherence":coherence_map,"args":args}, f)
 
     print('Time elapsed: {:.4f}'.format(time()-st))

@@ -1,5 +1,6 @@
 from .APT import *
-import sys
-import os
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from plot_utils import generate_params, load_pickle
+
+# Note: This local rqc module only provides APT classes.
+# For utility functions like generate_params, load_pickle, etc.,
+# use: from rqc_utils import generate_params, load_pickle, ...
+# Or rename this directory and import the installed rqc package directly.

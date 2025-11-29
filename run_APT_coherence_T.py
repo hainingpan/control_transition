@@ -51,7 +51,7 @@ if __name__=="__main__":
     rs=np.array(results).reshape((p_m_list.shape[0],np.abs(p_f_list.shape[0]),es_list.shape[0],es_C_list.shape[0],-1))
     coherence_map=rs
 
-    with open(os.environ['WORKDIR'] + '/control_transition/APT_coherence_T/APT_En({:d},{:d})_EnC({:d},{:d})_pm({:.3f},{:.3f},{:.0f})_pf({:.3f},{:.3f},{:.0f})_L{:d}_coherence_T.pickle'.format(*args.es,*args.es_C,*args.p_m,*args.p_f,args.L),'wb') as f:
+    with open(os.environ['WORKDIR'] + '/control_transition/APT_coherence_T_pf1/APT_En({:d},{:d})_EnC({:d},{:d})_pm({:.3f},{:.3f},{:.0f})_pf({:.3f},{:.3f},{:.0f})_L{:d}_coherence_T.pickle'.format(*args.es,*args.es_C,*args.p_m,*args.p_f,args.L),'wb') as f:
         pickle.dump({"coherence":coherence_map,"args":args}, f)
 
     print('Time elapsed: {:.4f}'.format(time()-st))

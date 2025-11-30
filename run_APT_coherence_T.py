@@ -13,7 +13,7 @@ def run(inputs):
     L, p_m,p_f,seed, seed_C  = inputs
     apt=APT(L=L,x0=Fraction(2**L-1,2**L),seed=seed,seed_C=seed_C,seed_vec=None,store_op=False)
     # for i in range(2*apt.L):
-    tf = int(2*apt.L**1.6)
+    tf = int(6*apt.L**1.6)
     coherence_list=[]
     for i in range(tf):
         apt.random_cicuit(p_m=p_m,p_f=p_f,even=True)
@@ -51,7 +51,7 @@ if __name__=="__main__":
     rs=np.array(results).reshape((p_m_list.shape[0],np.abs(p_f_list.shape[0]),es_list.shape[0],es_C_list.shape[0],-1))
     coherence_map=rs
 
-    with open(os.environ['WORKDIR'] + '/control_transition/APT_coherence_T_pf1/APT_En({:d},{:d})_EnC({:d},{:d})_pm({:.3f},{:.3f},{:.0f})_pf({:.3f},{:.3f},{:.0f})_L{:d}_coherence_T.pickle'.format(*args.es,*args.es_C,*args.p_m,*args.p_f,args.L),'wb') as f:
+    with open(os.environ.get('WORKDIR', '..') + '/control_transition/APT_coherence_T_pf1/APT_En({:d},{:d})_EnC({:d},{:d})_pm({:.3f},{:.3f},{:.0f})_pf({:.3f},{:.3f},{:.0f})_L{:d}_coherence_T.pickle'.format(*args.es,*args.es_C,*args.p_m,*args.p_f,args.L),'wb') as f:
         pickle.dump({"coherence":coherence_map,"args":args}, f)
 
     print('Time elapsed: {:.4f}'.format(time()-st))

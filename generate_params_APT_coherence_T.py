@@ -4,17 +4,18 @@ import os
 from rqc import generate_params
 
 # Output directory where pickle files are saved
-output_dir = os.path.expandvars('$WORKDIR/control_transition/APT_coherence_T')
+# output_dir = os.path.expandvars('$WORKDIR/control_transition/APT_coherence_T')
+output_dir = os.path.join(os.environ.get('WORKDIR', '..'), 'control_transition/APT_coherence_T')
 
 # Tunable parameter: p_m values sweep
-p_m_values = np.hstack([np.arange(0, 0.08, 0.01), np.arange(0.08, 0.101, 0.005),np.arange(0.11, 0.2, 0.01), np.arange(0.2, 0.35, 0.02)]) # this is p_m = p_f 
-# p_m_values = np.hstack([np.arange(0, 0.06, 0.02), np.arange(0.06, 0.08, 0.01), np.arange(0.085, 0.101, 0.005),np.arange(0.11, 0.13, 0.01), np.arange(0.14, 0.21, 0.02)])  # Coarse/fine spacing
+# p_m_values = np.hstack([np.arange(0, 0.08, 0.01), np.arange(0.08, 0.101, 0.005),np.arange(0.11, 0.2, 0.01), np.arange(0.2, 0.35, 0.02)]) # this is p_m = p_f 
+p_m_values = np.hstack([np.arange(0, 0.06, 0.02), np.arange(0.06, 0.08, 0.01), np.arange(0.085, 0.101, 0.005),np.arange(0.11, 0.13, 0.01), ])  # Coarse/fine spacing
 
-pf = [0.0, 0.0, -1]
-# pf = [1,1,1]
+# pf = [0.0, 0.0, -1]
+pf = [1,1,1]
 
-# output_filename = 'params_APT_coherence_T.txt'
-output_filename = 'params_APT_coherence_T_2.txt'
+output_filename = 'params_APT_coherence_T.txt'
+# output_filename = 'params_APT_coherence_T_2.txt'
 
 
 # Tunable parameter: L values
@@ -33,8 +34,7 @@ batch_config = {
     18: {'es_C_batch': 2000, 'num_batches': 1},
     20: {'es_C_batch': 2000, 'num_batches': 1},
     22: {'es_C_batch': 1000, 'num_batches': 2},
-    24: {'es_C_batch': 100, 'num_batches': 20}
-    # 24: {'es_C_batch': 200, 'num_batches': 10}
+    24: {'es_C_batch': 200, 'num_batches': 10}
 }
 
 # Tunable parameter: Trajectory seed range

@@ -20,7 +20,7 @@ eval "$(pyenv init --path)"
 pyenv shell miniforge3-25.1.1-2
 
 # Read parameters for this job array index
-PARAMS_FILE="$HOME/control_transition/params_APT_coherence_T.txt"
+PARAMS_FILE="$HOME/control_transition/params_APT_coherence_T_2.txt"
 PARAMS=$(sed -n "${PBS_ARRAY_INDEX}p" $PARAMS_FILE)
 
 echo "Job array index: $PBS_ARRAY_INDEX"

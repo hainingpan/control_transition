@@ -1,8 +1,59 @@
 import numpy as np
 import stim
 import galois
+from numba import njit
 
 GF2 = galois.GF(2)
+
+
+@njit(cache=True)
+def _gf2_rank_numba(matrix):
+    """Fast GF2 matrix rank using Numba-compiled Gaussian elimination."""
+    m, n = matrix.shape
+    mat = matrix.copy()  # Don't modify original
+    rank = 0
+
+    for col in range(n):
+        # Find pivot
+        pivot = -1
+        for row in range(rank, m):
+            if mat[row, col]:
+                pivot = row
+                break
+
+        if pivot == -1:
+            continue
+
+        # Swap rows
+        if pivot != rank:
+            for j in range(n):
+                mat[rank, j], mat[pivot, j] = mat[pivot, j], mat[rank, j]
+
+        # Eliminate column
+        for row in range(m):
+            if row != rank and mat[row, col]:
+                for j in range(n):
+                    mat[row, j] ^= mat[rank, j]
+
+        rank += 1
+
+    return rank
+
+
+def gf2_rank(matrix, galois=False):
+    """Compute GF2 matrix rank.
+
+    Parameters
+    ----------
+    matrix : np.ndarray
+        Binary matrix (boolean or integer).
+    galois : bool, optional
+        If True, use galois library (slow but reference).
+        If False (default), use numba-compiled version (fast).
+    """
+    if galois:
+        return np.linalg.matrix_rank(GF2(matrix.astype(int)))
+    return _gf2_rank_numba(matrix.astype(np.uint8))
 
 
 class Clifford:
@@ -224,27 +275,41 @@ class Clifford:
         _, _, z2x, z2z, _, _ = tab.to_numpy()
         return z2x, z2z
 
-    def _stabilizer_entropy(self, subregion):
-        """Entanglement entropy S(A) = |A| - rank(stabilizers on A)."""
-        x_sec, z_sec = self.get_tableau()
-        combined = np.logical_or(x_sec[:, subregion], z_sec[:, subregion])
-        return len(subregion) - np.linalg.matrix_rank(GF2(combined.astype(int)))
+    def _stabilizer_entropy(self, subregion, tableau=None, galois=False):
+        """Entanglement entropy S(A) = |A| - k_A, where k_A = L - rank(M_B)."""
+        if tableau is None:
+            x_sec, z_sec = self.get_tableau()
+        else:
+            x_sec, z_sec = tableau
 
-    def half_system_entanglement_entropy(self, selfaverage=False):
+        # Use boolean mask for O(1) complement computation
+        mask = np.ones(self.L, dtype=bool)
+        mask[subregion] = False
+
+        if not mask.any():
+            return 0  # Entire system has no entanglement with empty complement
+
+        combined = np.hstack([x_sec[:, mask], z_sec[:, mask]])
+        k_A = self.L - gf2_rank(combined, galois=galois)
+        return len(subregion) - k_A
+
+    def half_system_entanglement_entropy(self, selfaverage=False, galois=False):
         """Half-system entanglement entropy."""
         if selfaverage:
-            return np.mean([self._stabilizer_entropy(list(range(i, i + self.L // 2)))
-                           for i in range(self.L // 2)])
-        return self._stabilizer_entropy(list(range(self.L // 2)))
+            tableau = self.get_tableau()  # Cache tableau for all L/2 calls
+            half = self.L // 2
+            return np.mean([self._stabilizer_entropy(list(range(i, i + half)), tableau, galois=galois)
+                           for i in range(half)])
+        return self._stabilizer_entropy(list(range(self.L // 2)), galois=galois)
 
     def von_Neumann_entropy_pure(self, subregion):
         """Von Neumann entropy for a subregion."""
         return self._stabilizer_entropy(list(subregion))
 
-    def quantum_L1_coherence(self):
-        """Quantum coherence: rank of X-sector."""
+    def quantum_L1_coherence(self, galois=False):
+        """Quantum coherence: rank of X-sector on Galois field GF(2)."""
         x_sec, _ = self.get_tableau()
-        return np.linalg.matrix_rank(GF2(x_sec.astype(int)))
+        return gf2_rank(x_sec, galois=galois)
 
     def tripartite_mutual_information(self, subregion_A, subregion_B, subregion_C, selfaverage=False):
         """Tripartite mutual information I_3."""

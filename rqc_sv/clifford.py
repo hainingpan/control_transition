@@ -288,9 +288,13 @@ class Clifford:
 
     def random_circuit(self, p_m):
         """Execute one timestep with 5 layers."""
+        # Pre-generate random numbers for measurement decisions
+        odd_mask = self.rng_C.random(len(self.odd_pairs)) < p_m
+        even_mask = self.rng_C.random(len(self.even_pairs)) < p_m
+
         # Layer 1: Odd Measurements
-        for i, j in self.odd_pairs:
-            if self.rng_C.random() < p_m:
+        for idx, (i, j) in enumerate(self.odd_pairs):
+            if odd_mask[idx]:
                 self.measure_pair(i, j)
 
         # Layer 2: Odd Unitaries
@@ -298,8 +302,8 @@ class Clifford:
             self.conditional_unitary(i, j)
 
         # Layer 3: Even Measurements
-        for i, j in self.even_pairs:
-            if self.rng_C.random() < p_m:
+        for idx, (i, j) in enumerate(self.even_pairs):
+            if even_mask[idx]:
                 self.measure_pair(i, j)
 
         # Layer 4: Even Unitaries
@@ -387,18 +391,13 @@ class Clifford:
 
     def OP12(self):
         """Compute OP and <OP^2> directly from the stabilizer tableau using numba helper."""
-        stabs = self.sim.canonical_stabilizers()
+        z2x, z2z, z_signs = self.stabilizer_tableau()
         L = self.L
-        z2x = np.empty((L, L), dtype=np.uint8)
-        z2z = np.empty((L, L), dtype=np.uint8)
-        z_signs = np.empty(L, dtype=np.uint8)
-        for row, stab in enumerate(stabs):
-            x_bits, z_bits = stab.to_numpy()
-            z2x[row, :] = x_bits
-            z2z[row, :] = z_bits
-            z_signs[row] = stab.sign.real < 0
-
-        z_exp, zz_sum = _compute_z_exp_and_zz_sum(z2x, z2z, z_signs)
+        z_exp, zz_sum = _compute_z_exp_and_zz_sum(
+            z2x.astype(np.uint8),
+            z2z.astype(np.uint8),
+            z_signs.astype(np.uint8)
+        )
         sum_z = np.int64(z_exp).sum()
         return (L + sum_z) / (2 * L), (L**2 + 2 * L * sum_z + zz_sum) / (4 * L**2)
 
@@ -425,32 +424,28 @@ class Clifford:
         else:
             return self.OP2()
 
-    def get_tableau(self):
-        """Get stabilizer tableau as (x_sector, z_sector) boolean arrays."""
-        tab = self.sim.current_inverse_tableau().inverse()
-        _, _, z2x, z2z, _, _ = tab.to_numpy()
-        return z2x, z2z
+    def stabilizer_tableau(self):
+        """Return stabilizer generators as X/Z matrices and signs (all as bool)."""
+        stabs = self.sim.canonical_stabilizers()
+        L = self.L
+        z2x = np.empty((L, L), dtype=bool)
+        z2z = np.empty((L, L), dtype=bool)
+        z_signs = np.empty(L, dtype=bool)
 
-    def get_tableau_full(self):
-        """Get full stabilizer tableau including signs.
+        for row, stab in enumerate(stabs):
+            x_bits, z_bits = stab.to_numpy()
+            z2x[row, :] = x_bits
+            z2z[row, :] = z_bits
+            z_signs[row] = stab.sign.real < 0
 
-        Returns
-        -------
-        z2x, z2z : boolean arrays
-            X and Z sectors of Z-type stabilizers
-        z_signs : boolean array
-            Signs of Z-type stabilizers (True = negative)
-        """
-        tab = self.sim.current_inverse_tableau().inverse()
-        _, _, z2x, z2z, _, z_signs = tab.to_numpy()
         return z2x, z2z, z_signs
 
     def _stabilizer_entropy(self, subregion, tableau=None, galois=False):
         """Entanglement entropy S(A) = |A| - k_A, where k_A = L - rank(M_B)."""
         if tableau is None:
-            x_sec, z_sec = self.get_tableau()
+            x_sec, z_sec, _ = self.stabilizer_tableau()
         else:
-            x_sec, z_sec = tableau
+            x_sec, z_sec = tableau[:2]
 
         # Use boolean mask for O(1) complement computation
         mask = np.ones(self.L, dtype=bool)
@@ -466,8 +461,8 @@ class Clifford:
     def half_system_entanglement_entropy(self, selfaverage=False, galois=False):
         """Half-system entanglement entropy."""
         if selfaverage:
-            tableau = self.get_tableau()  # Cache tableau for all L/2 calls
             half = self.L // 2
+            tableau = self.stabilizer_tableau()  # cache once
             return np.mean([self._stabilizer_entropy(list(range(i, i + half)), tableau, galois=galois)
                            for i in range(half)])
         return self._stabilizer_entropy(list(range(self.L // 2)), galois=galois)
@@ -476,10 +471,13 @@ class Clifford:
         """Von Neumann entropy for a subregion."""
         return self._stabilizer_entropy(list(subregion))
 
-    def quantum_L1_coherence(self, galois=False):
+    def quantum_L1_coherence(self, galois=False, return_rank=False):
         """Quantum coherence: rank of X-sector on Galois field GF(2)."""
-        x_sec, _ = self.get_tableau()
-        return gf2_rank(x_sec, galois=galois)
+        x_sec = self.stabilizer_tableau()[0]
+        rank_= gf2_rank(x_sec, galois=galois)
+        if return_rank:
+            return rank_
+        return 2**rank_ - 1
 
     def tripartite_mutual_information(self, subregion_A, subregion_B, subregion_C, selfaverage=False):
         """Tripartite mutual information I_3."""

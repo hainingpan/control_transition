@@ -14,16 +14,23 @@ def run(inputs):
     tf = int(L**1.62)
     OP_list = []
     OP2_list = []
+    EE_list = []
+    coherence_list = []
 
-    # OP_list.append(cliff.OP())
-    # OP2_list.append(cliff.OP2_adaptive(p_m))
-    for i in range(tf):
-        cliff.random_circuit(p_m=p_m)
-        # OP_list.append(cliff.OP())
-        # OP2_list.append(cliff.OP2_adaptive(p_m))
     OP_list.append(cliff.OP())
     OP2_list.append(cliff.OP2_adaptive(p_m))
-    return OP_list, OP2_list
+    EE_list.append(cliff.half_system_entanglement_entropy())
+    coherence_list.append(cliff.quantum_L1_coherence())
+    for i in range(tf):
+        cliff.random_circuit(p_m=p_m)
+        OP_list.append(cliff.OP())
+        OP2_list.append(cliff.OP2_adaptive(p_m))
+        coherence_list.append(cliff.quantum_L1_coherence())
+        EE_list.append(cliff.half_system_entanglement_entropy())
+    # OP_list.append(cliff.OP())
+    # OP2_list.append(cliff.OP2_adaptive(p_m))
+    # EE_list.append(cliff.half_system_entanglement_entropy())
+    return {"OP": OP_list, "OP2": OP2_list, "EE": EE_list, "coherence": coherence_list}
 
 
 if __name__ == "__main__":
@@ -51,18 +58,16 @@ if __name__ == "__main__":
         delayed(run)(input_data) for input_data in tqdm(inputs, desc="Processing")
     )
 
-    # Separate OP and OP2 results
-    OP_results = [r[0] for r in results]
-    OP2_results = [r[1] for r in results]
-
-    OP_map = np.array(OP_results).reshape((p_m_list.shape[0], es_list.shape[0], es_C_list.shape[0], -1))
-    OP2_map = np.array(OP2_results).reshape((p_m_list.shape[0], es_list.shape[0], es_C_list.shape[0], -1))
+    # Automatically unpack all metrics from results
+    keys = results[0].keys()
+    data = {key: np.array([r[key] for r in results]).reshape((p_m_list.shape[0], es_list.shape[0], es_C_list.shape[0], -1)) for key in keys}
+    data["args"] = args
 
     output_dir = os.environ.get('WORKDIR', '..')
     filename = f'{output_dir}/control_transition/Clifford_En({args.es[0]:d},{args.es[1]:d})_EnC({args.es_C[0]:d},{args.es_C[1]:d})_pm({args.p_m[0]:.3f},{args.p_m[1]:.3f},{args.p_m[2]:.0f})_alpha{args.alpha:.1f}_L{args.L:d}_T.pickle'
 
     with open(filename, 'wb') as f:
-        pickle.dump({"OP": OP_map, "OP2": OP2_map, "args": args}, f)
+        pickle.dump(data, f)
 
     print(f'Saved to: {filename}')
     print(f'Time elapsed: {time()-st:.4f}s')

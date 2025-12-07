@@ -471,7 +471,7 @@ class Clifford:
         """Von Neumann entropy for a subregion."""
         return self._stabilizer_entropy(list(subregion))
 
-    def quantum_L1_coherence(self, galois=False, return_rank=False):
+    def quantum_L1_coherence(self, galois=False, return_rank=True):
         """Quantum coherence: rank of X-sector on Galois field GF(2)."""
         x_sec = self.stabilizer_tableau()[0]
         rank_= gf2_rank(x_sec, galois=galois)

@@ -56,6 +56,94 @@ def gf2_rank(matrix, galois=False):
     return _gf2_rank_numba(matrix.astype(np.uint8))
 
 
+@njit(cache=True)
+def _compute_z_exp_and_zz_sum(z2x, z2z, z_signs):
+    """Compute Z expectations and sum of ZZ correlations from tableau.
+
+    For stabilizer states:
+    - ⟨Zi⟩ = 0 if Zi anticommutes with any stabilizer (z2x has 1 in column i)
+    - ⟨Zi⟩ = ±1 otherwise, sign from z_signs when stabilizer equals Zi
+
+    Returns
+    -------
+    z_exp : array of int8
+        Single-qubit Z expectations (-1, 0, or +1)
+    zz_sum : float
+        Sum of all ⟨ZiZj⟩ for i < j
+    """
+    L = z2x.shape[1]
+    z_exp = np.zeros(L, dtype=np.int8)
+
+    # Compute single-qubit Z expectations
+    for i in range(L):
+        # Check if Zi anticommutes with any stabilizer
+        has_x = False
+        for k in range(L):
+            if z2x[k, i]:
+                has_x = True
+                break
+
+        if has_x:
+            z_exp[i] = 0  # uncertain
+        else:
+            # Zi commutes with all stabilizers
+            # Find which stabilizer has Z only on qubit i
+            for k in range(L):
+                # Check if stabilizer k is exactly Zi (Z on i, nothing else)
+                is_zi = True
+                for j in range(L):
+                    expected_z = 1 if j == i else 0
+                    if z2z[k, j] != expected_z or z2x[k, j] != 0:
+                        is_zi = False
+                        break
+                if is_zi:
+                    z_exp[i] = -1 if z_signs[k] else 1
+                    break
+
+    # Compute sum of ZZ correlations
+    zz_sum = 0.0
+
+    # Diagonal: sum_i ⟨Zi²⟩ = L
+    zz_sum += L
+
+    # Off-diagonal: sum_{i<j} 2⟨ZiZj⟩
+    for i in range(L):
+        for j in range(i + 1, L):
+            if z_exp[i] != 0 and z_exp[j] != 0:
+                # Both definite: ⟨ZiZj⟩ = ⟨Zi⟩⟨Zj⟩
+                zz_sum += 2 * z_exp[i] * z_exp[j]
+            elif z_exp[i] != 0 or z_exp[j] != 0:
+                # One definite, one uncertain: ⟨ZiZj⟩ = 0
+                pass
+            else:
+                # Both uncertain: check if ZiZj anticommutes with any stabilizer
+                anticommutes = False
+                for k in range(L):
+                    # ZiZj anticommutes with Sk iff Sk has X on exactly one of i,j
+                    if z2x[k, i] != z2x[k, j]:
+                        anticommutes = True
+                        break
+
+                if anticommutes:
+                    pass  # ⟨ZiZj⟩ = 0
+                else:
+                    # ZiZj commutes with all - find if it's in stabilizer group
+                    # Look for stabilizer that equals ±ZiZj
+                    for k in range(L):
+                        is_zizj = True
+                        for q in range(L):
+                            expected_z = 1 if (q == i or q == j) else 0
+                            if z2z[k, q] != expected_z or z2x[k, q] != 0:
+                                is_zizj = False
+                                break
+                        if is_zizj:
+                            sign = -1 if z_signs[k] else 1
+                            zz_sum += 2 * sign
+                            break
+
+    return z_exp, zz_sum
+
+
 class Clifford:
     """Flagged Clifford Circuit (A_1^alpha Protocol) using stim stabilizer simulation."""
 
@@ -246,6 +334,21 @@ class Clifford:
 
         return (self.L**2 + 2*self.L*sum_z + zz_total) / (4 * self.L**2)
 
+    def OP12(self):
+        """<OP^2>, <OP^2> computed directly from tableau using numba.
+
+        Avoids k² Python→C++ calls by computing everything from the stabilizer
+        tableau using GF(2) linear algebra.
+        """
+        z2x, z2z, z_signs = self.get_tableau_full()
+        z_exp, zz_sum = _compute_z_exp_and_zz_sum(
+            z2x.astype(np.uint8),
+            z2z.astype(np.uint8),
+            z_signs.astype(np.uint8)
+        )
+        sum_z = np.sum(z_exp)
+        return (self.L+sum_z)/(2*self.L), (self.L**2 + 2*self.L*sum_z + zz_sum) / (4 * self.L**2)
+
     def OP2_adaptive(self, p_m, p_m_critical=0.3):
         """Adaptive <OP^2> that switches method based on measurement rate.
 
@@ -274,6 +377,20 @@ class Clifford:
         tab = self.sim.current_inverse_tableau().inverse()
         _, _, z2x, z2z, _, _ = tab.to_numpy()
         return z2x, z2z
+
+    def get_tableau_full(self):
+        """Get full stabilizer tableau including signs.
+
+        Returns
+        -------
+        z2x, z2z : boolean arrays
+            X and Z sectors of Z-type stabilizers
+        z_signs : boolean array
+            Signs of Z-type stabilizers (True = negative)
+        """
+        tab = self.sim.current_inverse_tableau().inverse()
+        _, _, z2x, z2z, _, z_signs = tab.to_numpy()
+        return z2x, z2z, z_signs
 
     def _stabilizer_entropy(self, subregion, tableau=None, galois=False):
         """Entanglement entropy S(A) = |A| - k_A, where k_A = L - rank(M_B)."""

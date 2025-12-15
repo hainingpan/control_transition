@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import numpy as np
 import os
+from rqc import generate_params
 
 # Output directory where pickle files are saved
 output_dir = os.path.join(os.environ.get('WORKDIR', '..'), 'control_transition/Clifford')
@@ -52,7 +53,7 @@ batch_config = {
 
 L_values = list(batch_config.keys())
 
-# Build params_list for each (L, p_m, es_batch, es_C_batch) combination
+# Build params_list for each L value (using vary_params to span all batch combinations)
 params_list = []
 
 for L in L_values:
@@ -69,51 +70,40 @@ for L in L_values:
     num_es_batches = total_es // es_batch
     num_es_C_batches = total_es_C // es_C_batch
 
-    for p_m in p_m_values:
-        for es_batch_idx in range(num_es_batches):
-            es_start = es_batch_idx * es_batch + 1
-            es_end = (es_batch_idx + 1) * es_batch + 1
+    # Pre-compute all es_range and es_C_range tuples
+    es_ranges = [(es_batch_idx * es_batch + 1, (es_batch_idx + 1) * es_batch + 1)
+                 for es_batch_idx in range(num_es_batches)]
+    es_C_ranges = [(es_C_batch_idx * es_C_batch + 1, (es_C_batch_idx + 1) * es_C_batch + 1)
+                   for es_C_batch_idx in range(num_es_C_batches)]
 
-            for es_C_batch_idx in range(num_es_C_batches):
-                es_C_start = es_C_batch_idx * es_C_batch + 1
-                es_C_end = (es_C_batch_idx + 1) * es_C_batch + 1
+    fixed_params = {
+        'L': L,
+        'alpha': alpha,
+    }
 
-                fixed_params = {
-                    'L': L,
-                    'es_start': es_start,
-                    'es_end': es_end,
-                    'es_C_start': es_C_start,
-                    'es_C_end': es_C_end,
-                    'alpha': alpha,
-                    'p_m': p_m,
-                }
+    vary_params = {
+        'p_m': p_m_values,
+        'es_range': es_ranges,
+        'es_C_range': es_C_ranges,
+    }
 
-                params_list.append(fixed_params)
+    params_list.append((fixed_params, vary_params))
 
-# Generate parameters file
-with open(output_filename, 'w') as f:
-    for fixed_params in params_list:
-        # Single p_m value: --p_m {value} {value} 1
-        param_str = f"--L {fixed_params['L']} --p_m {fixed_params['p_m']:.3f} {fixed_params['p_m']:.3f} 1 --alpha {fixed_params['alpha']:.1f} --es {fixed_params['es_start']} {fixed_params['es_end']} --es_C {fixed_params['es_C_start']} {fixed_params['es_C_end']}"
-        f.write(param_str + '\n')
+# Generate parameters for each L value (one call per L)
+for fixed_params, vary_params in params_list:
+    generate_params(
+        fixed_params=fixed_params,
+        vary_params=vary_params,
+        fn_template='Clifford_En({es_range[0]},{es_range[1]})_EnC({es_C_range[0]},{es_C_range[1]})_pm({p_m:.3f},{p_m:.3f},1)_alpha{alpha:.1f}_L{L}_T.pickle',
+        fn_dir_template='Clifford',
+        input_params_template='--L {L} --p_m {p_m:.3f} {p_m:.3f} 1 --alpha {alpha:.1f} --es {es_range[0]} {es_range[1]} --es_C {es_C_range[0]} {es_C_range[1]}',
+        load_data=lambda x: None,
+        filename=output_filename,
+        load=False,
+        data_dict=None,
+    )
 
-print(f"Generated {output_filename} with {len(params_list)} parameter sets")
+print(f"Generated {output_filename}")
 print(f"L values: {L_values}")
 print(f"p_m values: {[f'{p:.2f}' for p in p_m_values]} ({len(p_m_values)} values)")
 print(f"alpha: {alpha}")
-
-# Print job summary
-print("\nJob summary:")
-total_all = 0
-for L in L_values:
-    cfg = batch_config[L]
-    num_es_batches = cfg['total_es'] // cfg['es_batch']
-    num_es_C_batches = cfg['total_es_C'] // cfg['es_C_batch']
-    jobs_per_pm = num_es_batches * num_es_C_batches
-    total_jobs = len(p_m_values) * jobs_per_pm
-    traj_per_job = cfg['es_batch'] * cfg['es_C_batch']
-    total_all += total_jobs
-    print(f"  L={L}: {total_jobs} jobs ({len(p_m_values)} p_m x {num_es_batches} es_batches x {num_es_C_batches} es_C_batches)")
-    print(f"         es_batch={cfg['es_batch']}, es_C_batch={cfg['es_C_batch']}")
-    print(f"         {traj_per_job:,} trajectories per job")
-print(f"\nTotal jobs: {total_all}")

@@ -8,7 +8,7 @@ output_dir = os.path.join(os.environ.get('WORKDIR', '..'), 'control_transition/C
 
 # Tunable parameter: p_m values sweep (one p_m per job)
 # p_m_values = np.array([0.5, 0.55, 0.6, 0.65, 0.7, 0.75])  # 6 values
-p_m_values = np.array([.64, 0.66, 0.67, .68,0.69, .72])  # 6 values
+p_m_values = np.array([.64, 0.66, 0.67, .68,0.69, 0.71,.72,0.73,0.74 ])  # 6 values
 
 # Tunable parameter: alpha (power-law exponent)
 alpha = 0.5

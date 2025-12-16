@@ -21,10 +21,10 @@ pyenv shell miniforge3-25.1.1-2
 PYTHON_PATH="$HOME/.pyenv/versions/miniforge3-25.1.1-2/bin/python"
 
 # Define parameter arrays
-# L_VALUES=(16,32,64,128)
-L_VALUES=(16,32,64,128)
+# L_VALUES=(16 32 64 128)
+L_VALUES=(16 32 64 128)
 # PM_VALUES=(0.5 0.55 0.6 0.65 0.7 0.75)
-PM_VALUES=(.64, 0.66, 0.67, .68,0.69, .72)
+PM_VALUES=(0.64  0.66  0.67  0.68 0.69  0.72)
 
 # Calculate indices from SLURM_ARRAY_TASK_ID
 # Total combinations = 5 * 6 = 30

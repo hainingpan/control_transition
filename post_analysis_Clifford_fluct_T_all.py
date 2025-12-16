@@ -11,6 +11,40 @@ from tqdm import tqdm
 import numpy as np
 import rqc
 import pickle
+from pathlib import Path
+import os
+from scipy.special import logsumexp
+
+LOG2 = np.log(2.0)
+def mean_log2(r, axis=None):
+    r = np.asarray(r, dtype=np.float64)
+    # log2(2^r - 1) = r + log(1 - 2^{-r})/log(2)
+    return np.mean(r + np.log1p(-np.exp(-LOG2 * r)) / LOG2, axis=axis)
+# def log2_mean(r, axis=None):
+#     r = np.asarray(r, dtype=np.float64)
+
+#     # a = ln(2^r - 1) = ln2 * r + ln(1 - 2^{-r})
+#     a = LOG2 * r + np.log1p(-np.exp(-LOG2 * r))
+
+#     # stable log-mean-exp along axis
+#     m = np.max(a, axis=axis, keepdims=True)
+#     logsum = m + np.log(np.sum(np.exp(a - m), axis=axis, keepdims=True))
+
+#     # divide by number of elements along axis
+#     n = a.shape[axis] if axis is not None else a.size
+#     logmean = logsum - np.log(n)
+
+#     return np.squeeze(logmean, axis=axis) / LOG2
+def log2_mean(r, axis=None):
+    """
+    Returns ln( mean(2^r - 1) ) computed stably.
+    """
+    # a = ln(2^r - 1) = ln2 * r + ln(1 - 2^{-r})
+    a = LOG2 * r + np.log1p(-np.exp(-LOG2 * r))
+
+    # log(mean(exp(a))) = logsumexp(a) - log(N)
+    n = a.shape[axis] if axis is not None else a.size
+    return (logsumexp(a, axis=axis) - np.log(n)) / LOG2
 
 batch_config = {
     # L=16: max es*es_C = 864000/0.225 = 3.84M, use 500*500=250k (1 job per p_m)
@@ -74,7 +108,8 @@ def run(L, alpha, p_m, ob):
             fixed_params=fixed_params,
             vary_params=vary_params,
             fn_template='Clifford_En({es_range[0]},{es_range[1]})_EnC({es_C_range[0]},{es_C_range[1]})_pm({p_m:.3f},{p_m:.3f},1)_alpha{alpha:.1f}_L{L}_T.pickle',
-            fn_dir_template='Clifford',
+            # fn_dir_template='Clifford',
+            fn_dir_template=Path(os.environ['WORKDIR'])/'control_transition'/'Clifford',
             input_params_template='--L {L} --p_m {p_m:.3f} {p_m:.3f} 1 --alpha {alpha:.1f} --es {es_range[0]} {es_range[1]} --es_C {es_C_range[0]} {es_C_range[1]}',
             load_data=rqc.load_pickle,
             filename=None,
@@ -84,23 +119,36 @@ def run(L, alpha, p_m, ob):
     df=rqc.convert_pd(data_dict, names=['Metrics', 'L', 'p_m', 'es_m', 'es_C'])
     
     def process_each_traj(df,L,p_m,sC,p_proj=0, threshold=1e-8, ob1='OP', ob2='OP2'):
+        # Compute [0th, 1st, 2nd] moments of the observable 'ob' over [trajectory, state, shots] fluctuation
         # data_ob1.shape = (num_state, num_timepoints), ob1 means "first moment of ob"
         # data_ob2.shape = (num_state, num_timepoints), ob2 means "second moment of ob"
         # traj_var = E_traj[E_state[ob]^2] - (E_traj[E_state[ob]])^2
         # state_var = E_state[<ob^2>] - E_state[<ob>]^2
         # shot_var = E_traj[E_state[ob^2]] - (E_traj[E_state[ob]])^2
         data = df['observations'].xs(sC,level='es_C').xs(p_m,level='p_m').xs(L,level='L')
-        data_ob1=np.stack(data.xs(ob1,level='Metrics'))
-        data_ob2=np.stack(data.xs(ob2,level='Metrics'))
-        sigma_mc=data_ob1.var(axis=0)
+        data_ob1=np.stack(data.xs(ob1,level='Metrics')) # (es_m, time)
+        data_ob2=np.stack(data.xs(ob2,level='Metrics')) # (es_m, time)
+        sigma_mc=data_ob1.var(axis=0) # (time,)
         traj_var = sigma_mc
-        state_var = data_ob2-data_ob1**2
-        shot_var = data_ob2.mean(axis=0) - data_ob1.mean(axis=0)**2
-        traj_weight = (traj_var<threshold).astype(float)
-        state_weight = (state_var<threshold).sum(axis=0)
-        shot_weight = (shot_var<threshold).astype(float)
-        num_state = state_var.shape[0]
-        return num_state, traj_weight, state_weight, shot_weight, traj_var, state_var, shot_var
+        state_var = data_ob2-data_ob1**2 # (es_m, time)
+        shot_var = data_ob2.mean(axis=0) - data_ob1.mean(axis=0)**2 # (time,)
+        traj_weight = (traj_var<threshold).astype(float) # (time,)
+        state_weight = (state_var<threshold).sum(axis=0) # (time,)
+        shot_weight = (shot_var<threshold).astype(float) # (time,)
+        num_state = state_var.shape[0] # number of es_m, |es_m|
+
+        # compute `ob` itself
+        ob1_mean = data_ob1.mean(axis=0)    # based on the assumption that each es_C has same number of es_m
+        # compute `EE` 
+        data_EE=np.stack(data.xs('EE',level='Metrics')) # (es_m, time)
+        EE_mean = data_EE.mean(axis=0)
+        # compute `coherence` 
+        data_coh=np.stack(data.xs('coherence',level='Metrics')) # (es_m, time)
+        # This is specifical because only the rank of "X" sector in tableau is returned, and the actual coherence is 2^rank-1, so we provide we ways of averaging, 1. <log C> ; 2. log <C>
+        # mean_log_coh = mean_log2(data_coh, axis=0)
+        log_mean_coh = log2_mean(data_coh, axis=0)
+
+        return num_state, traj_weight, state_weight, shot_weight, traj_var, state_var, shot_var, ob1_mean, EE_mean, log_mean_coh
         
     traj_weight_list = {}
     state_weight_list = {}
@@ -111,6 +159,10 @@ def run(L, alpha, p_m, ob):
     traj_var_list = {}
     state_var_list = {}
     shot_var_list = {}
+    ob1_mean_list = {}
+    EE_mean_list = {}
+    # mean_log_coh_list = {}
+    log_mean_coh_list = {}
     for p in tqdm(p_m_list):
         for L in L_list:
             print(p,L)
@@ -125,9 +177,13 @@ def run(L, alpha, p_m, ob):
             traj_sq_sum=0
             state_sq_sum=0
             shot_sq_sum=0
+            ob1_mean_sum=0
+            EE_mean_sum=0
+            # mean_log_coh_sum=0
+            log_mean_coh_sum=-np.inf
             for sC in range(1,batch_config[L]['total_es_C']+1):
                 # try:
-                num_state_, traj_weight, state_weight, shot_weight, traj_var, state_var, shot_var = process_each_traj(df,L=L,p_m=p,sC=sC,p_proj=0)
+                num_state_, traj_weight, state_weight, shot_weight, traj_var, state_var, shot_var, ob1_mean, EE_mean, log_mean_coh = process_each_traj(df,L=L,p_m=p,sC=sC,p_proj=0)
                 num_traj +=1
                 traj_weight_sum +=traj_weight
                 state_weight_sum +=state_weight
@@ -139,6 +195,10 @@ def run(L, alpha, p_m, ob):
                 state_sq_sum += (state_var**2).sum(axis=0)
                 shot_sq_sum += (shot_var**2)
                 num_state += num_state_
+                ob1_mean_sum += ob1_mean
+                EE_mean_sum += EE_mean
+                # mean_log_coh_sum += mean_log_coh
+                log_mean_coh_sum = np.logaddexp(log_mean_coh, log_mean_coh_sum)
                 # except:
                 #     pass
             traj_weight_list[(p,L)]=traj_weight_sum/num_traj
@@ -150,6 +210,11 @@ def run(L, alpha, p_m, ob):
             traj_var_list[(p,L)] = traj_sq_sum/num_traj - (traj_mean_sum/num_traj)**2
             state_var_list[(p,L)] = state_sq_sum/num_state - (state_mean_sum/num_state)**2
             shot_var_list[(p,L)] = shot_sq_sum/num_traj - (shot_mean_sum/num_traj)**2
+            ob1_mean_list[(p,L)] = ob1_mean_sum/num_traj
+            EE_mean_list[(p,L)] = EE_mean_sum/num_traj
+            # mean_log_coh_list[(p,L)] = mean_log_coh_sum/num_traj
+            log_mean_coh_list[(p,L)] = log_mean_coh_sum - np.log(num_traj)
+            
 
 
     with open(f'traj_state_var_{p_m:.3f}_{ob}_L{L}_Clifford.pickle','wb') as f:
@@ -163,6 +228,10 @@ def run(L, alpha, p_m, ob):
             'traj_var': traj_var_list,
             'state_var': state_var_list,
             'shot_var': shot_var_list,
+            'ob1_mean': ob1_mean_list,
+            'EE_mean': EE_mean_list,
+            # 'mean_log_coh': mean_log_coh_list,
+            'log_mean_coh': log_mean_coh_list,
             },f)
     # return traj_weight_list, state_weight_list
 
@@ -173,7 +242,7 @@ if __name__ == "__main__":
     parser.add_argument('--p_m', type=float, required=True, help='Measurement probability') 
     parser.add_argument('--alpha', type=float, required=True, help='Alpha parameter controlling the range') 
 
-    parser.add_argument('--ob', type=str, required=True, help='Observable, DW or O')
+    parser.add_argument('--ob', type=str, required=True, help='Observable, op')
     args = parser.parse_args()
 
 

@@ -7,7 +7,8 @@ from rqc import generate_params
 output_dir = os.path.join(os.environ.get('WORKDIR', '..'), 'control_transition/Clifford')
 
 # Tunable parameter: p_m values sweep (one p_m per job)
-p_m_values = np.array([0.5, 0.55, 0.6, 0.65, 0.7, 0.75])  # 6 values
+# p_m_values = np.array([0.5, 0.55, 0.6, 0.65, 0.7, 0.75])  # 6 values
+p_m_values = np.array([.64, 0.66, 0.67, .68,0.69, .72])  # 6 values
 
 # Tunable parameter: alpha (power-law exponent)
 alpha = 0.5
@@ -48,7 +49,7 @@ batch_config = {
     128: {'total_es': 500, 'total_es_C': 500, 'es_batch': 500, 'es_C_batch': 10},
 
     # L=256: max es*es_C = 864000/1499 = 576, use 125*1=125 (2000 jobs per p_m)
-    256: {'total_es': 500, 'total_es_C': 500, 'es_batch': 125, 'es_C_batch': 1},
+    # 256: {'total_es': 500, 'total_es_C': 500, 'es_batch': 125, 'es_C_batch': 1},
 }
 
 L_values = list(batch_config.keys())

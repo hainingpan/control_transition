@@ -8,7 +8,7 @@
 #SBATCH --job-name=PostAnalysis_Clifford
 #SBATCH --requeue
 #SBATCH --output=slurm_out/PostAnalysis_Clifford_%A_%a.out
-#SBATCH --array=0-5
+#SBATCH --array=0-23
 
 # Thread control for numerical libraries
 export OMP_NUM_THREADS=1
@@ -21,8 +21,10 @@ pyenv shell miniforge3-25.1.1-2
 PYTHON_PATH="$HOME/.pyenv/versions/miniforge3-25.1.1-2/bin/python"
 
 # Define parameter arrays
-L_VALUES=(256)
-PM_VALUES=(0.5 0.55 0.6 0.65 0.7 0.75)
+# L_VALUES=(16,32,64,128)
+L_VALUES=(16,32,64,128)
+# PM_VALUES=(0.5 0.55 0.6 0.65 0.7 0.75)
+PM_VALUES=(.64, 0.66, 0.67, .68,0.69, .72)
 
 # Calculate indices from SLURM_ARRAY_TASK_ID
 # Total combinations = 5 * 6 = 30

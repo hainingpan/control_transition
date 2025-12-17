@@ -2,13 +2,15 @@
 import numpy as np
 import os
 from rqc import generate_params
+from pathlib import Path
 
 # Output directory where pickle files are saved
 output_dir = os.path.join(os.environ.get('WORKDIR', '..'), 'control_transition/Clifford')
 
 # Tunable parameter: p_m values sweep (one p_m per job)
 # p_m_values = np.array([0.5, 0.55, 0.6, 0.65, 0.7, 0.75])  # 6 values
-p_m_values = np.array([.64, 0.66, 0.67, .68,0.69, 0.71,.72,0.73,0.74 ])  # 6 values
+# p_m_values = np.array([.64, 0.66, 0.67, .68,0.69, 0.71,.72,0.73,0.74 ])  # 6 values
+p_m_values = np.array([0.5 , 0.55, 0.6 , 0.64, 0.65, 0.66, 0.67, 0.68, 0.69, 0.7 , 0.71,0.72, 0.73, 0.74, 0.75])  
 
 # Tunable parameter: alpha (power-law exponent)
 alpha = 0.5
@@ -49,7 +51,7 @@ batch_config = {
     128: {'total_es': 500, 'total_es_C': 500, 'es_batch': 500, 'es_C_batch': 10},
 
     # L=256: max es*es_C = 864000/1499 = 576, use 125*1=125 (2000 jobs per p_m)
-    # 256: {'total_es': 500, 'total_es_C': 500, 'es_batch': 125, 'es_C_batch': 1},
+    256: {'total_es': 500, 'total_es_C': 500, 'es_batch': 125, 'es_C_batch': 1},
 }
 
 L_values = list(batch_config.keys())
@@ -96,7 +98,8 @@ for fixed_params, vary_params in params_list:
         fixed_params=fixed_params,
         vary_params=vary_params,
         fn_template='Clifford_En({es_range[0]},{es_range[1]})_EnC({es_C_range[0]},{es_C_range[1]})_pm({p_m:.3f},{p_m:.3f},1)_alpha{alpha:.1f}_L{L}_T.pickle',
-        fn_dir_template='Clifford',
+        # fn_dir_template='Clifford',
+        fn_dir_template=Path(os.environ['WORKDIR'])/'control_transition'/'Clifford',
         input_params_template='--L {L} --p_m {p_m:.3f} {p_m:.3f} 1 --alpha {alpha:.1f} --es {es_range[0]} {es_range[1]} --es_C {es_C_range[0]} {es_C_range[1]}',
         load_data=lambda x: None,
         filename=output_filename,

@@ -65,6 +65,7 @@ if __name__ == "__main__":
 
     output_dir = os.environ.get('WORKDIR', '..')
     filename = f'{output_dir}/control_transition/Clifford/Clifford_En({args.es[0]:d},{args.es[1]:d})_EnC({args.es_C[0]:d},{args.es_C[1]:d})_pm({args.p_m[0]:.3f},{args.p_m[1]:.3f},{args.p_m[2]:.0f})_alpha{args.alpha:.1f}_L{args.L:d}_T.pickle'
+    print(f'Saving to: {filename}')
 
     with open(filename, 'wb') as f:
         pickle.dump(data, f)

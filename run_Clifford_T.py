@@ -11,7 +11,8 @@ import os
 def run(inputs):
     L, p_m, alpha, seed, seed_C = inputs
     cliff = Clifford(L=L, seed=seed, seed_C=seed_C, store_op=False, alpha=alpha)
-    tf = int(L**1.62)
+    # tf = int(L**1.62)
+    tf = int(256**1.62)
     OP_list = []
     OP2_list = []
     EE_list = []

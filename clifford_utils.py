@@ -103,3 +103,32 @@ def simple_linearfit(x, y, xfunc=lambda x: x, yfunc=lambda x: x, ax=None, idx_mi
     ax.plot(x,(fitted_line((np.array(x)))), 'r--', label=f'Fit: slope={slope:.3f}')
     return slope, intercept
     # ax.plot(x, np.exp(fitted_line(np.log(np.array(x)))), 'r--')
+
+def plot_metric_T_vs_p(data_df, metric, L_list =None, p_m_list=None, z = 1.62, nu_t = 1.73, nu_x=None, p_c = 0.6726, beta = 0, ax=None, cmap =plt.cm.Blues, min_func =lambda L: int(L**1.62),max_func =lambda L: -1, collapse=False, ylabel='',yscale='linear', xlim=None, fmt = '.-'):
+    if nu_x is None:
+        nu_x = nu_t / z
+    
+    if ax is None:
+        fig, ax = plt.subplots()
+    if L_list is None:
+        L_list = sorted(data_df.index.get_level_values('L').unique())
+    if p_m_list is None:
+        p_m_list = data_df.index.get_level_values('p_m').unique()
+    color_list = cmap(np.linspace(0.4,1,len(L_list)))
+    for L_idx, L in enumerate(L_list):
+        y = np.array([data_df.xs((metric, p, L), level = ('Metrics','p_m','L'))['observations'].iloc[0][min_func(L):max_func(L)].mean() for p in p_m_list])
+
+        if collapse:
+            ax.plot((p_m_list-p_c)* L**(1/nu_x), y * L**(beta/nu_x),fmt, color=color_list[L_idx], label=f'L={L}')
+        else:
+            ax.plot(p_m_list, y, fmt, label=f'L={L}', color=color_list[L_idx])
+    if collapse:
+        ax.set_xlabel(r'$(p_m - p_c) L^{1/\nu}$')
+        ax.set_ylabel(rf'{ylabel} $\times L^{{{beta}/\nu}}$')
+        ax.set_title(f'$\\nu$={nu_x:.2f}, $\\beta$={beta:.2f}')
+    else:
+        ax.set_xlabel(r'$p_m $')
+        ax.set_ylabel(rf'{ylabel}')
+    ax.legend()
+    ax.set_yscale(yscale)
+    ax.set_xlim(xlim)

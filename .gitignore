@@ -22,3 +22,4 @@ J*.sh
 obs-del
 *.e*
 *.o*
+*.npz

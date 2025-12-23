@@ -87,7 +87,8 @@ if __name__ == "__main__":
         # Local storage mode: save intermediate results to disk to avoid OOM
         # Create local temp directory with SLURM job ID to avoid conflicts between jobs
         job_id = os.environ.get('SLURM_JOB_ID', os.getpid())
-        temp_dir = os.path.join(os.getcwd(), f'tmp_results_{job_id}')
+        output_dir = os.environ.get('WORKDIR', '..')
+        temp_dir = os.path.join(output_dir, 'control_transition', f'tmp_results_{job_id}')
         os.makedirs(temp_dir, exist_ok=True)
         print(f'Using local storage mode. Temp dir: {temp_dir}')
 

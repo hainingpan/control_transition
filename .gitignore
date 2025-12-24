@@ -23,3 +23,7 @@ obs-del
 *.e*
 *.o*
 *.npz
+
+HPC Centers_ Narwhal Slurm Guide_files
+
+*/__pycache__/*

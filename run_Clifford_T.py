@@ -13,7 +13,9 @@ def run_local_storage(inputs):
     """Run simulation and save results to local temp file to avoid OOM."""
     L, p_m, alpha, seed, seed_C, flat_idx, temp_dir = inputs
     cliff = Clifford(L=L, seed=seed, seed_C=seed_C, store_op=False, alpha=alpha)
-    tf = int(256**1.62)
+    # tf = int(L**1.62)
+    # tf = int(256**1.62)
+    tf = int(6*L**1.62)
 
     # Use numpy arrays directly instead of lists
     OP_arr = np.zeros(tf + 1, dtype=np.float64)

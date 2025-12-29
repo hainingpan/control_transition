@@ -1,5 +1,6 @@
 import matplotlib.pyplot as plt
 import numpy as np
+import pandas as pd
 
 def plot_metric_T_vs_steps_fixedL(data_df, L, metric, ax =None, idx_=1, ylabel=None, ylim=None,p_m_list=None, cmap=plt.cm.Blues, yscale='log', xscale='log'):
     if ax is None:
@@ -29,7 +30,7 @@ def plot_metric_T_vs_steps_fixedL(data_df, L, metric, ax =None, idx_=1, ylabel=N
     ax.set_title(f'L={L}')
 
 
-def plot_metric_T_vs_steps_fixedp_m(data_df, p_m, metric, ax =None, idx_=1, prefactor=None, z=1.62, average_log=False, theory_line=False, ylabel=None, L_list=None,ylim=None, yscale='log', xscale='log'):
+def plot_metric_T_vs_steps_fixedp_m(data_df, p_m, metric, ax=None, idx_=1, prefactor=None, z=1.62, average_log=False, theory_line=False, ylabel=None, L_list=None, ylim=None, yscale='log', xscale='log', quantile=None):
     if ax is None:
         fig, ax =plt.subplots(figsize=(4,4))
     if L_list is None:
@@ -67,6 +68,38 @@ def plot_metric_T_vs_steps_fixedp_m(data_df, p_m, metric, ax =None, idx_=1, pref
                     guide_y.append(data_[t_idx])
             ax.plot(guide_t, guide_y, color=guide_color_list[pf_idx], linestyle='--', label=f'${pf}L^{{{z}}}$')
 
+    # Find the position (x) when y reaches specified quantile values for each L
+    quantile_points = {}
+    if quantile is not None:
+        quantile_list = [quantile] if not isinstance(quantile, (list, tuple)) else quantile
+        quantile_color_list = plt.cm.Greens(np.linspace(.4, 1, len(quantile_list)))
+
+        for q_idx, q in enumerate(quantile_list):
+            quantile_points[q] = {'L': [], 'x': [], 'y': []}
+            for L in L_list:
+                if average_log:
+                    data_ = np.exp(np.log(np.stack(data_df.xs(p_m, level='p_m').xs(L, level='L')['observations'])).mean(axis=0))
+                else:
+                    data_ = data_df.xs((metric, p_m, L), level=('Metrics', 'p_m', 'L'))['observations'].iloc[0]
+
+                # Find the index closest to quantile value q
+                x_q = np.argmin(np.abs(data_ - q))
+                y_q = data_[x_q]
+                quantile_points[q]['L'].append(L)
+                quantile_points[q]['x'].append(x_q)
+                quantile_points[q]['y'].append(y_q)
+
+            # Convert lists to numpy arrays
+            quantile_points[q]['L'] = np.array(quantile_points[q]['L'])
+            quantile_points[q]['x'] = np.array(quantile_points[q]['x'])
+            quantile_points[q]['y'] = np.array(quantile_points[q]['y'])
+
+            # Plot the quantile line connecting points across L values
+            if len(quantile_points[q]['x']) > 0:
+                ax.plot(quantile_points[q]['x'], quantile_points[q]['y'],
+                        color=quantile_color_list[q_idx], linestyle=':', marker='o',
+                        label=f'y={q}')
+
     ax.set_yscale(yscale)
     ax.set_xscale(xscale)
     ax.legend(bbox_to_anchor=(1.05, 1), loc='upper left')
@@ -79,8 +112,9 @@ def plot_metric_T_vs_steps_fixedp_m(data_df, p_m, metric, ax =None, idx_=1, pref
     ax.set_ylabel(ylabel)
     ax.set_title(f'$p_m$={p_m:.3f}')
 
+    return quantile_points
+
 def simple_linearfit(x, y, xfunc=lambda x: x, yfunc=lambda x: x, ax=None, idx_min=2, idx_max=100):
-        
     # idx_min = 2
     # idx_max = 100
     x_fit = x[idx_min:idx_max]
@@ -115,13 +149,20 @@ def plot_metric_T_vs_p(data_df, metric, L_list =None, p_m_list=None, z = 1.62, n
     if p_m_list is None:
         p_m_list = data_df.index.get_level_values('p_m').unique()
     color_list = cmap(np.linspace(0.4,1,len(L_list)))
+    rows = []
     for L_idx, L in enumerate(L_list):
         y = np.array([data_df.xs((metric, p, L), level = ('Metrics','p_m','L'))['observations'].iloc[0][min_func(L):max_func(L)].mean() for p in p_m_list])
 
         if collapse:
-            ax.plot((p_m_list-p_c)* L**(1/nu_x), y * L**(beta/nu_x),fmt, color=color_list[L_idx], label=f'L={L}')
+            x_plot = (p_m_list-p_c) * L**(1/nu_x)
+            y_plot = y * L**(beta/nu_x)
+            ax.plot(x_plot, y_plot, fmt, color=color_list[L_idx], label=f'L={L}')
         else:
-            ax.plot(p_m_list, y, fmt, label=f'L={L}', color=color_list[L_idx])
+            x_plot = p_m_list
+            y_plot = y
+            ax.plot(x_plot, y_plot, fmt, label=f'L={L}', color=color_list[L_idx])
+        for p, y_val in zip(p_m_list, y_plot):
+            rows.append({'p': p, 'L': L, 'estimator': y_val, 'standard_error': 1e-3})
     if collapse:
         ax.set_xlabel(r'$(p_m - p_c) L^{1/\nu}$')
         ax.set_ylabel(rf'{ylabel} $\times L^{{{beta}/\nu}}$')
@@ -132,3 +173,5 @@ def plot_metric_T_vs_p(data_df, metric, L_list =None, p_m_list=None, z = 1.62, n
     ax.legend()
     ax.set_yscale(yscale)
     ax.set_xlim(xlim)
+    result_df = pd.DataFrame(rows).set_index(['p', 'L'])
+    return result_df

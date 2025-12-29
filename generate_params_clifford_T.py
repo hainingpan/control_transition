@@ -76,16 +76,16 @@ output_filename = 'params_clifford_T.txt'
 # This is for t = 256**1.62 for L = [16, 32,64,] and t = 6*L**1.62 for L=128
 batch_config = {
     # L=16: max es*es_C = 864000/0.225 = 3.84M, use 500*500=250k (1 job per p_m)
-    # 16: {'total_es': 500, 'total_es_C': 500, 'es_batch': 500, 'es_C_batch': 50},
+    16: {'total_es': 500, 'total_es_C': 500, 'es_batch': 500, 'es_C_batch': 50},
 
     # L=32: max es*es_C = 864000/0.944 = 915k, use 500*500=250k (1 job per p_m)
-    # 32: {'total_es': 500, 'total_es_C': 500, 'es_batch': 500, 'es_C_batch': 50},
+    32: {'total_es': 500, 'total_es_C': 500, 'es_batch': 500, 'es_C_batch': 50},
 
     # L=64: max es*es_C = 864000/6.626 = 130k, use 500*100=50k (5 jobs per p_m)
-    # 64: {'total_es': 500, 'total_es_C': 500, 'es_batch': 500, 'es_C_batch': 10},
+    64: {'total_es': 500, 'total_es_C': 500, 'es_batch': 500, 'es_C_batch': 10},
 
     # L=128: max es*es_C = 864000/89.7 = 9632, use 500*10=5k (50 jobs per p_m)
-    128: {'total_es': 500, 'total_es_C': 500, 'es_batch': 500, 'es_C_batch': 5},
+    # 128: {'total_es': 500, 'total_es_C': 500, 'es_batch': 500, 'es_C_batch': 5},
 
     # # L=256: max es*es_C = 864000/1499 = 576, use 125*1=125 (2000 jobs per p_m)
     # 256: {'total_es': 500, 'total_es_C': 500, 'es_batch': 125, 'es_C_batch': 1},

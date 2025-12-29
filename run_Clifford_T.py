@@ -15,7 +15,8 @@ def run_local_storage(inputs):
     cliff = Clifford(L=L, seed=seed, seed_C=seed_C, store_op=False, alpha=alpha)
     # tf = int(L**1.62)
     # tf = int(256**1.62)
-    tf = int(6*L**1.62)
+    # tf = int(6*L**1.62)
+    tf = {16: int(256**1.62), 32: int(256**1.62), 64: int(256**1.62), 128: int(6*128**1.62), 256: int(L**1.62)}.get(L, int(L**1.62))
 
     # Use numpy arrays directly instead of lists
     OP_arr = np.zeros(tf + 1, dtype=np.float64)

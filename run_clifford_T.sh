@@ -1,13 +1,14 @@
 #!/bin/bash
 #PBS -A ONRDC54450755
 #PBS -l walltime=1:00:00
-#PBS -q debug
+#PBS -q background
 #PBS -l select=1:ncpus=192:mpiprocs=1
 #PBS -N Clifford_T
 #PBS -m abe
 #PBS -M hnpanboa@gmail.com
 #PBS -r y
-#PBS -J 10001-11000
+#PBS -J 1-400
+
 
 cd $HOME/control_transition
 

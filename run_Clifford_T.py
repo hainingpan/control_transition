@@ -9,14 +9,16 @@ import os
 import shutil
 
 
+def get_tf(L):
+    """Compute the number of time steps based on system size L."""
+    return {16: int(256**1.62), 32: int(256**1.62), 64: int(256**1.62), 128: int(6*128**1.62), 256: int(L**1.62)}.get(L, int(L**1.62))
+
+
 def run_local_storage(inputs):
     """Run simulation and save results to local temp file to avoid OOM."""
     L, p_m, alpha, seed, seed_C, flat_idx, temp_dir = inputs
     cliff = Clifford(L=L, seed=seed, seed_C=seed_C, store_op=False, alpha=alpha)
-    # tf = int(L**1.62)
-    # tf = int(256**1.62)
-    # tf = int(6*L**1.62)
-    tf = {16: int(256**1.62), 32: int(256**1.62), 64: int(256**1.62), 128: int(6*128**1.62), 256: int(L**1.62)}.get(L, int(L**1.62))
+    tf = get_tf(L)
 
     # Use numpy arrays directly instead of lists
     OP_arr = np.zeros(tf + 1, dtype=np.float64)
@@ -46,8 +48,7 @@ def run_local_storage(inputs):
 def run(inputs):
     L, p_m, alpha, seed, seed_C = inputs
     cliff = Clifford(L=L, seed=seed, seed_C=seed_C, store_op=False, alpha=alpha)
-    # tf = int(L**1.62)
-    tf = int(256**1.62)
+    tf = get_tf(L)
     OP_list = []
     OP2_list = []
     EE_list = []
@@ -109,7 +110,7 @@ if __name__ == "__main__":
         )
 
         # Aggregate using memmap to avoid OOM
-        tf = int(256**1.62)
+        tf = get_tf(args.L)
         shape = (p_m_list.shape[0], es_list.shape[0], es_C_list.shape[0], tf + 1)
         total_tasks = len(inputs)
         keys = ['OP', 'OP2', 'EE', 'coherence']

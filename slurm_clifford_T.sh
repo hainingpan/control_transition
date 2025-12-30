@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --time=18:00:00
+#SBATCH --time=10:00:00
 #SBATCH --partition=main
 #SBATCH --nodes=1
 #SBATCH --ntasks=1

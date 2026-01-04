@@ -1,19 +1,19 @@
 #!/bin/bash
 #PBS -A ONRDC54450755
-#PBS -l walltime=1:00:00
+#PBS -l walltime=3:00:00
 #PBS -q background
 #PBS -l select=1:ncpus=192:mpiprocs=1
 #PBS -N Clifford_T
 #PBS -m abe
 #PBS -M hnpanboa@gmail.com
 #PBS -r y
-#PBS -J 1-400
+#PBS -J 1-2
 
 
 cd $HOME/control_transition
 
 # Set number of parallel jobs based on allocated CPUs
-N_JOBS=125
+N_JOBS=192
 
 # Thread control for numerical libraries
 export OMP_NUM_THREADS=1

@@ -45,6 +45,8 @@ def log2_mean(r, axis=None):
     # log(mean(exp(a))) = logsumexp(a) - log(N)
     n = a.shape[axis] if axis is not None else a.size
     return (logsumexp(a, axis=axis) - np.log(n)) / LOG2
+
+
 # This is for t = L**1.62
 # batch_config = {
 #     # L=16: max es*es_C = 864000/0.225 = 3.84M, use 500*500=250k (1 job per p_m)

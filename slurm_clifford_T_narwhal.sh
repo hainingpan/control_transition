@@ -1,21 +1,21 @@
 #!/bin/bash
 #SBATCH --account=ONRDC54450755
-#SBATCH --time=0:30:00
-#SBATCH -q standard
+#SBATCH --time=4:00:00
+#SBATCH -q background
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
-#SBATCH --cpus-per-task=125
+#SBATCH --cpus-per-task=128
 #SBATCH --job-name=Clifford_T
 ##SBATCH --mail-type=BEGIN,END,FAIL
 ##SBATCH --mail-user=hnpanboa@gmail.com
 #SBATCH --requeue
 #SBATCH --output=slurm_out/Clifford_T_%A_%a.out
-#SBATCH --array=1-1000
+#SBATCH --array=1-150
 
 cd $HOME/control_transition
 
-# Set number of parallel jobs
-N_JOBS=125
+# Set number of parallel jobs (bound to cpus-per-task)
+N_JOBS=${SLURM_CPUS_PER_TASK:-128}
 
 # Thread control for numerical libraries
 export OMP_NUM_THREADS=1

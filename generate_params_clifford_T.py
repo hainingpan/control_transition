@@ -93,8 +93,14 @@ batch_config = {
     # L=64: max es*es_C = 864000/6.626 = 130k, use 500*100=50k (5 jobs per p_m)
     # 64: {'total_es': 500, 'total_es_C': 500, 'es_batch': 500, 'es_C_batch': 10},
 
+    # L=96: interpolated between L=64 and L=128
+    96: {'total_es': 500, 'total_es_C': 500, 'es_batch': 500, 'es_C_batch': 5},
+
     # L=128: max es*es_C = 864000/89.7 = 9632, use 500*10=5k (50 jobs per p_m)
     # 128: {'total_es': 500, 'total_es_C': 500, 'es_batch': 500, 'es_C_batch': 5},
+
+    # L=192: interpolated between L=128 and L=256
+    192: {'total_es': 500, 'total_es_C': 500, 'es_batch': 500, 'es_C_batch': 2},
 
     # # L=256: max es*es_C = 864000/1499 = 576, use 125*1=125 (2000 jobs per p_m)
     # 256: {'total_es': 500, 'total_es_C': 500, 'es_batch': 125, 'es_C_batch': 1},

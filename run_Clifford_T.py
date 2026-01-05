@@ -11,7 +11,7 @@ import shutil
 
 def get_tf(L):
     """Compute the number of time steps based on system size L."""
-    return {16: int(256**1.62), 32: int(256**1.62), 64: int(256**1.62), 128: int(6*128**1.62), 256: int(L**1.62), 24: int(L**1.62), 48: int(L**1.62)}.get(L, int(L**1.62))
+    return {16: int(256**1.62), 32: int(256**1.62), 64: int(256**1.62), 128: int(6*128**1.62), 256: int(L**1.62), 24: int(L**1.62), 48: int(L**1.62), 96: int(L**1.62), 192: int(L**1.62)}.get(L, int(L**1.62))
 
 
 def run_local_storage(inputs):

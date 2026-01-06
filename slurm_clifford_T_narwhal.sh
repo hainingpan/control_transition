@@ -10,7 +10,7 @@
 ##SBATCH --mail-user=hnpanboa@gmail.com
 #SBATCH --requeue
 #SBATCH --output=slurm_out/Clifford_T_%A_%a.out
-#SBATCH --array=1-150
+#SBATCH --array=1-999
 
 cd $HOME/control_transition
 
@@ -29,7 +29,7 @@ PYTHON_PATH="$HOME/.pyenv/versions/miniforge3-25.1.1-2/bin/python"
 echo "Python path: $(which python)"
 
 # Parameters file
-PARAMS_FILE="$HOME/control_transition/params_clifford_T.txt"
+PARAMS_FILE="$HOME/control_transition/params_clifford_T_2.txt"
 
 # Calculate actual parameter line using OFFSET (default 0)
 OFFSET=${OFFSET:-0}

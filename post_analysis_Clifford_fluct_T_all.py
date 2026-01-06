@@ -91,16 +91,19 @@ batch_config = {
     # 16: {'total_es': 500, 'total_es_C': 500, 'es_batch': 500, 'es_C_batch': 50},
 
     # L=24: interpolated between L=16 and L=32
-    24: {'total_es': 500, 'total_es_C': 500, 'es_batch': 500, 'es_C_batch': 50},
+    # 24: {'total_es': 500, 'total_es_C': 500, 'es_batch': 500, 'es_C_batch': 50},
 
     # L=32: max es*es_C = 864000/0.944 = 915k, use 500*500=250k (1 job per p_m)
     # 32: {'total_es': 500, 'total_es_C': 500, 'es_batch': 500, 'es_C_batch': 50},
 
     # L=48: interpolated between L=32 and L=64
-    48: {'total_es': 500, 'total_es_C': 500, 'es_batch': 500, 'es_C_batch': 25},
+    # 48: {'total_es': 500, 'total_es_C': 500, 'es_batch': 500, 'es_C_batch': 25},
 
     # L=64: max es*es_C = 864000/6.626 = 130k, use 500*100=50k (5 jobs per p_m)
     # 64: {'total_es': 500, 'total_es_C': 500, 'es_batch': 500, 'es_C_batch': 10},
+
+    # L=96: interpolated between L=64 and L=128
+    96: {'total_es': 500, 'total_es_C': 500, 'es_batch': 500, 'es_C_batch': 5},
 
     # L=128: max es*es_C = 864000/89.7 = 9632, use 500*10=5k (50 jobs per p_m)
     # 128: {'total_es': 500, 'total_es_C': 500, 'es_batch': 500, 'es_C_batch': 5},

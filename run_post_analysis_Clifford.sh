@@ -7,7 +7,7 @@
 #PBS -m abe
 #PBS -M hnpanboa@gmail.com
 #PBS -r y
-#PBS -J 0-30
+#PBS -J 0-15
 
 cd $HOME/control_transition
 
@@ -23,7 +23,7 @@ PYTHON_PATH="$HOME/.pyenv/versions/miniforge3-25.1.1-2/bin/python"
 
 # Define parameter arrays
 # L_VALUES=(16 32 64)
-L_VALUES=(24 48)
+L_VALUES=(96 )
 # L_VALUES=(128 )
 # L_VALUES=(256 )
 PM_VALUES=(0.5  0.55 0.6  0.64 0.65 0.66 0.67 0.68 0.69 0.7  0.71 0.72 0.73 0.74  0.75)

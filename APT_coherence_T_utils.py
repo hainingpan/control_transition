@@ -6,7 +6,7 @@ import numpy as np
 import pandas as pd
 from pathlib import Path
 import matplotlib.pyplot as plt
-import rqcimport matplotlib.pyplot as plt
+import rqc
 
 def sem(arr, axis=None, ddof=1):
     """Standard error of the mean."""
@@ -30,52 +30,52 @@ def _load_zip_pickle_with_swap(fn, z):
         data['coherence'] = np.swapaxes(coherence, 2, 3)
     return data
 
+# This is the old version before changing to es_C batching, can be dumped later
+# def load_apt_coherence(use_zip=True, L_list=(12, 14, 16, 18, 20, 22, 24), p_f=1, p_f_int=1,zipfilename='APT_coherence_T_pf1.zip', 
+#                        p_m_list = np.hstack([np.arange(0, 0.08, 0.01), np.arange(0.08, 0.101, 0.005),np.arange(0.11, 0.2, 0.01)]),
+#     BATCH_CONFIG = {
+#         12: {'es_batch': 2000, 'num_batches': 1},
+#         14: {'es_batch': 2000, 'num_batches': 1},
+#         16: {'es_batch': 2000, 'num_batches': 1},
+#         18: {'es_batch': 2000, 'num_batches': 1},
+#         20: {'es_batch': 2000, 'num_batches': 1},
+#         22: {'es_batch': 1000, 'num_batches': 2},
+#         24: {'es_batch': 100, 'num_batches': 20},
+#     }):
+#     """Load APT coherence pickles into a parsed dictionary using rqc.generate_params."""
+#     load_data = _load_zip_pickle_with_swap if use_zip else _load_pickle_with_swap
+#     data_dict = {'fn': set()}
+#     FN_TEMPLATE = (
+#     'APT_En(1,2)_EnC({es_C_range[0]},{es_C_range[1]})_pm({p_m:.3f},{p_m:.3f},1)_pf({p_f:.3f},{p_f:.3f},{p_f_int:d})_L{L}_coherence_T.pickle'
+# )   
+#     ZIP_PATH = os.path.expandvars(f'$WORKDIR/control_transition/{zipfilename}')
 
-def load_apt_coherence(use_zip=True, L_list=(12, 14, 16, 18, 20, 22, 24), p_f=1, p_f_int=1,zipfilename='APT_coherence_T_pf1.zip', 
-                       p_m_list = np.hstack([np.arange(0, 0.08, 0.01), np.arange(0.08, 0.101, 0.005),np.arange(0.11, 0.2, 0.01)]),
-    BATCH_CONFIG = {
-        12: {'es_batch': 2000, 'num_batches': 1},
-        14: {'es_batch': 2000, 'num_batches': 1},
-        16: {'es_batch': 2000, 'num_batches': 1},
-        18: {'es_batch': 2000, 'num_batches': 1},
-        20: {'es_batch': 2000, 'num_batches': 1},
-        22: {'es_batch': 1000, 'num_batches': 2},
-        24: {'es_batch': 100, 'num_batches': 20},
-    }):
-    """Load APT coherence pickles into a parsed dictionary using rqc.generate_params."""
-    load_data = _load_zip_pickle_with_swap if use_zip else _load_pickle_with_swap
-    data_dict = {'fn': set()}
-    FN_TEMPLATE = (
-    'APT_En(1,2)_EnC({es_C_range[0]},{es_C_range[1]})_pm({p_m:.3f},{p_m:.3f},1)_pf({p_f:.3f},{p_f:.3f},{p_f_int:d})_L{L}_coherence_T.pickle'
-)   
-    ZIP_PATH = os.path.expandvars(f'$WORKDIR/control_transition/{zipfilename}')
 
 
+#     for L in L_list:
+#         cfg = BATCH_CONFIG[L]
+#         es_ranges = []
+#         for batch_idx in range(cfg['num_batches']):
+#             es_start = 1 + batch_idx * cfg['es_batch']
+#             es_end = min(1 + (batch_idx + 1) * cfg['es_batch'], 2001)
+#             es_ranges.append((es_start, es_end))
 
-    for L in L_list:
-        cfg = BATCH_CONFIG[L]
-        es_ranges = []
-        for batch_idx in range(cfg['num_batches']):
-            es_start = 1 + batch_idx * cfg['es_batch']
-            es_end = min(1 + (batch_idx + 1) * cfg['es_batch'], 2001)
-            es_ranges.append((es_start, es_end))
+#         data_dict = rqc.generate_params(
+#             # fixed_params={'es_start': 1, 'es_end': 2, 'p_f': -1, 'L': L},
+#             fixed_params={'es_start': 1, 'es_end': 2, 'p_f': p_f, 'L': L, 'p_f_int': p_f_int},
+#             vary_params={'p_m': p_m_list, 'es_C_range': es_ranges},
+#             fn_template=FN_TEMPLATE,
+#             fn_dir_template='.',
+#             input_params_template='',
+#             load_data=load_data,
+#             filename=None,
+#             filelist=None,
+#             load=True,
+#             data_dict=data_dict,
+#             zip_fn=ZIP_PATH if use_zip else None,
+#         )
 
-        data_dict = rqc.generate_params(
-            # fixed_params={'es_start': 1, 'es_end': 2, 'p_f': -1, 'L': L},
-            fixed_params={'es_start': 1, 'es_end': 2, 'p_f': p_f, 'L': L, 'p_f_int': p_f_int},
-            vary_params={'p_m': p_m_list, 'es_C_range': es_ranges},
-            fn_template=FN_TEMPLATE,
-            fn_dir_template='.',
-            input_params_template='',
-            load_data=load_data,
-            filename=None,
-            filelist=None,
-            load=True,
-            data_dict=data_dict,
-            zip_fn=ZIP_PATH if use_zip else None,
-        )
-
-    return data_dict
+#     return data_dict
 
 
 def apt_coherence_to_df(data_dict):
@@ -267,3 +267,109 @@ def plot_apt_coherence_T_vs_L(data_df, p_m, ax=None,idx_min=0, idx_max=2, min_fu
     ax.plot(x, fitted_line(np.array(x)), 'r--')
     ax.set_xlabel('L')
     ax.set_ylabel('L1 coherence')
+
+def load_apt_coherence(use_zip=True, L_list=(12, 14, 16, 18, 20, 22, 24), p_f=1, p_f_int=1,zipfilename='APT_coherence_T_pf1.zip', 
+                       p_m_list = np.hstack([np.arange(0, 0.08, 0.01), np.arange(0.08, 0.101, 0.005),np.arange(0.11, 0.2, 0.01)]),
+BATCH_CONFIG = {
+    12: {'es_C_batch': 2000, 'num_batches': 2},
+    14: {'es_C_batch': 2000, 'num_batches': 2},
+    16: {'es_C_batch': 2000, 'num_batches': 2},
+    18: {'es_C_batch': 2000, 'num_batches': 2},
+    20: {'es_C_batch': 1000, 'num_batches': 4},
+    22: {'es_C_batch': 24*10, 'num_batches': 4000//(24*10)+1},
+    24: {'es_C_batch': 24*2, 'num_batches': 4000//(24*2)+1}
+}):
+    """Load APT coherence pickles into a parsed dictionary using rqc.generate_params."""
+    load_data = _load_zip_pickle_with_swap if use_zip else _load_pickle_with_swap
+    data_dict = {'fn': set()}
+    FN_TEMPLATE = (
+    'APT_En(1,2)_EnC({es_C_range[0]},{es_C_range[1]})_pm({p_m:.3f},{p_m:.3f},1)_pf({p_f:.3f},{p_f:.3f},{p_f_int:d})_L{L}_coherence_T.pickle'
+)   
+    ZIP_PATH = os.path.expandvars(f'$WORKDIR/control_transition/{zipfilename}')
+
+
+
+    for L in L_list:
+        cfg = BATCH_CONFIG[L]
+        es_ranges = []
+        for batch_idx in range(cfg['num_batches']):
+            es_start = 1 + batch_idx * cfg['es_C_batch']
+            # es_end = min(1 + (batch_idx + 1) * cfg['es_C_batch'], 2001)
+            es_end = 1 + (batch_idx + 1) * cfg['es_C_batch']
+            es_ranges.append((es_start, es_end))
+
+        data_dict = rqc.generate_params(
+            # fixed_params={'es_start': 1, 'es_end': 2, 'p_f': -1, 'L': L},
+            fixed_params={'es_start': 1, 'es_end': 2, 'p_f': p_f, 'L': L, 'p_f_int': p_f_int},
+            vary_params={'p_m': p_m_list, 'es_C_range': es_ranges},
+            fn_template=FN_TEMPLATE,
+            fn_dir_template='.',
+            input_params_template='',
+            load_data=load_data,
+            filename=None,
+            filelist=None,
+            load=True,
+            data_dict=data_dict,
+            zip_fn=ZIP_PATH if use_zip else None,
+        )
+
+    return data_dict
+
+
+# def apt_coherence_to_df(data_dict):
+#     """Convert the loaded coherence dictionary to a pandas DataFrame."""
+#     return rqc.convert_pd(data_dict, names=['Metrics', 'L', 'p_m', 'p_f', 'es_C', 'es_m'])
+
+
+def aggregate_over_samples(data_df):
+    """
+    Aggregate observations over es_C and es_m, computing mean and SEM for each (p_m, L).
+
+    Parameters
+    ----------
+    data_df : pd.DataFrame
+        DataFrame with MultiIndex (Metrics, L, p_m, p_f, es_C, es_m) and 'observations' column
+        containing arrays/lists of values.
+
+    Returns
+    -------
+    pd.DataFrame
+        DataFrame with MultiIndex (p, L) and columns:
+        - 'mean': mean over all es_C and es_m samples
+        - 'sem': standard error of the mean
+        - 'log_mean': log of the mean
+        - 'se_log_mean': standard error of log(mean) via chain rule: sem / mean
+    """
+    # Get unique (p_m, L) combinations
+    p_m_vals = data_df.index.get_level_values('p_m').unique()
+    L_vals = data_df.index.get_level_values('L').unique()
+
+    results = []
+    for p_m in p_m_vals:
+        for L in L_vals:
+            try:
+                # Get all observations for this (p_m, L) combination
+                subset = data_df.xs(p_m, level='p_m').xs(L, level='L')
+                # Stack all observation arrays
+                obs_stack = np.stack(subset['observations'].values)
+                # Compute mean and SEM across all samples
+                mean_val = obs_stack.mean(axis=0)
+                sem_val = sem(obs_stack, axis=0)
+                # Log2 of mean and its standard error via chain rule: d(log2(x))/dx = 1/(x*ln(2))
+                log_mean_val = np.log2(mean_val)
+                se_log_mean_val = sem_val / (mean_val * np.log(2))
+                results.append({
+                    'p': p_m,
+                    'L': L,
+                    'mean': mean_val,
+                    'sem': sem_val,
+                    'log_mean': log_mean_val,
+                    'se_log_mean': se_log_mean_val
+                })
+            except KeyError:
+                # Skip if this (p, L) combination doesn't exist
+                continue
+
+    result_df = pd.DataFrame(results)
+    result_df = result_df.set_index(['p', 'L'])
+    return result_df

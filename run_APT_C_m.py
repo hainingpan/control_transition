@@ -16,8 +16,8 @@ def run(inputs):
     tf = int(10*apt.L**1.6)
     OP_list=[]
     for i in range(tf):
-        apt.random_cicuit(p_m=p_m,p_f=p_f,even=True)
-        apt.random_cicuit(p_m=p_m,p_f=p_f,even=False)
+        apt.random_circuit(p_m=p_m,p_f=p_f,even=True)
+        apt.random_circuit(p_m=p_m,p_f=p_f,even=False)
         OP_list.append(apt.order_parameter())
     return OP_list
 

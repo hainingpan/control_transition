@@ -17,8 +17,8 @@ def run(inputs):
     OP_list=[]
     OP2_list=[]
     for i in range(tf):
-        apt.random_cicuit(p_m=p_m,p_f=p_f,even=True)
-        apt.random_cicuit(p_m=p_m,p_f=p_f,even=False)
+        apt.random_circuit(p_m=p_m,p_f=p_f,even=True)
+        apt.random_circuit(p_m=p_m,p_f=p_f,even=False)
         OP_list.append(apt.order_parameter())
         OP2_list.append(apt.order_parameter(moment=2))
     return {"OP": OP_list, "OP2": OP2_list}

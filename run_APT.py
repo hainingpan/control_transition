@@ -13,8 +13,8 @@ def run(inputs):
     L, p_m,p_f,seed  = inputs
     apt=APT(L=L,x0=Fraction(2**L-1,2**L),seed=seed,seed_C=None,seed_vec=None,store_op=False)
     for i in range(2*apt.L):
-        apt.random_cicuit(p_m=p_m,p_f=p_f,even=True)
-        apt.random_cicuit(p_m=p_m,p_f=p_f,even=False)
+        apt.random_circuit(p_m=p_m,p_f=p_f,even=True)
+        apt.random_circuit(p_m=p_m,p_f=p_f,even=False)
     OP=apt.order_parameter()
     TMI=apt.tripartite_mutual_information(np.arange(apt.L//4),np.arange(apt.L//4)+apt.L//4,np.arange(apt.L//4)+apt.L//2,selfaverage=True)
     return OP,TMI

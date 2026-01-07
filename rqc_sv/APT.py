@@ -91,7 +91,7 @@ class APT:
         norm=np.linalg.norm(self.vec)
         self.vec/=norm
 
-    def random_cicuit(self,p_m,p_f,even):
+    def random_circuit(self,p_m,p_f,even):
         """p_m: measurement probability, p_f: feedback probability"""
         self.unitary_layer(even=even)
         measure_idx=np.arange(self.L)[(self.rng_C.random(self.L)<p_m)]
@@ -106,8 +106,16 @@ class APT:
                 if self.store_op:
                     self.op_history[-1].append('X')
 
-    def order_parameter(self):
-        return np.sum([self.inner_prob(pos=i,n=1) for i in range(self.L)])/self.L
+    def order_parameter(self, moment=1):
+        # n = 1/L sum_i p(down)_i
+        # n^2 = 1/L^2 sum_{i,j} p(down)_i p(down)_j
+        p_i = [self.inner_prob(pos=i,n=1) for i in range(self.L)]
+        rs = {}
+        if 1 in moment:
+            rs['OP'] = np.sum(p_i)/self.L
+        if 2 in moment:
+            rs['OP2'] = np.sum(np.outer(p_i,p_i))/(self.L**2)
+        return rs
             
     def half_system_entanglement_entropy(self,vec=None,selfaverage=False,n=1,threshold=1e-10):
         """Calculate the half-system entanglement entropy, where the state vector is `vec`. The half-system entanglement entropy is defined as sum_{i=0..L/2-1}S_([i,i+L/2)) / (L/2), where S_([i,i+L/2)) is the von Neumann entropy of the subregion [i,i+L/2).

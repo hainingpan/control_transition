@@ -16,8 +16,8 @@ def run(inputs):
     tf = int(6*apt.L**1.6)
     coherence_list=[]
     for i in range(tf):
-        apt.random_cicuit(p_m=p_m,p_f=p_f,even=True)
-        apt.random_cicuit(p_m=p_m,p_f=p_f,even=False)
+        apt.random_circuit(p_m=p_m,p_f=p_f,even=True)
+        apt.random_circuit(p_m=p_m,p_f=p_f,even=False)
         coherence_list.append(apt.quantum_L1_coherence())
     return coherence_list
 

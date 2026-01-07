@@ -78,7 +78,7 @@ for fixed_params, vary_params in params_list:
     generate_params(
         fixed_params=fixed_params,
         vary_params=vary_params,
-        fn_template='APT_En({es_range[0]},{es_range[1]})_EnC({es_C_range[0]},{es_C_range[1]})_pm({p_m:.3f},{p_m:.3f},1)_pf(1.000,1.000,1)_L{L}_OP_T.pickle',,
+        fn_template='APT_En({es_range[0]},{es_range[1]})_EnC({es_C_range[0]},{es_C_range[1]})_pm({p_m:.3f},{p_m:.3f},1)_pf(1.000,1.000,1)_L{L}_OP_T.pickle',
         fn_dir_template=Path(os.environ.get('WORKDIR', '..'))/'control_transition'/'APT_OP_T',
         input_params_template='--L {L} --p_m {p_m:.3f} {p_m:.3f} 1 --p_f {pf1:.1f} {pf2:.1f} {pf3:d} --es {es_range[0]} {es_range[1]} --es_C {es_C_range[0]} {es_C_range[1]}',
         load_data=lambda x: None,

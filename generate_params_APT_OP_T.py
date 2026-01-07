@@ -8,7 +8,7 @@ from pathlib import Path
 output_dir = os.path.join(os.environ.get('WORKDIR', '..'), 'control_transition/APT_OP_T')
 
 # Tunable parameter: p_m values sweep (one p_m per job)
-p_m_values = np.hstack([np.arange(0.085, 0.101, 0.005), np.arange(0.11, 0.13, 0.01)])
+p_m_values = [0.085,0.087,0.089,0.09,0.091,0.093,0.095, ]
 
 # p_f parameters: [start, end, num] for linspace format
 # [1.0, 1.0, 1] means p_f = linspace(1.0, 1.0, 1) = [1.0]

@@ -4,7 +4,7 @@ from .utils import U, Haar_state, dec2bin
 from opt_einsum import contract, contract_expression
 class APT:
 # Absorbing phase transition, may need a better name later
-    def __init__(self,L,seed=None,seed_vec=None,seed_C=None,x0=None,store_op=False):
+    def __init__(self,L,seed=None,seed_vec=None,seed_C=None,x0=None,store_op=False,dtype=np.complex64):
         """
         seed : int, optional
             (1) the random seed in the measurement outcome; (2) if `seed_vec` and `seed_C` is None, this random seed also applied to initial state vector and circuit, by default None
@@ -12,16 +12,19 @@ class APT:
             the random seed in the state vector, by default None
         seed_C : int, optional
             the random seed in the circuit, by default None
+        dtype : numpy dtype, optional
+            data type for state vector and gates, by default np.complex64 (use np.complex128 for higher precision)
         """
         self.L=L
         self.x0=x0
         self.store_op=store_op
+        self.dtype=dtype
         self.rng=np.random.default_rng(seed)
         self.rng_vec=np.random.default_rng(seed_vec) if seed_vec is not None else self.rng
         self.rng_C=np.random.default_rng(seed_C) if seed_C is not None else self.rng
         self.rng=np.random.default_rng(seed)
         self.vec=self._initialize_vector()
-        self.U3=np.zeros((2,2,2,2),dtype=complex)
+        self.U3=np.zeros((2,2,2,2),dtype=self.dtype)
         self.U3[0,0,0,0]=1
         self.sites=np.arange(L)
         self.delta={0:np.array([1,0]),1:np.array([0,1])}  
@@ -41,10 +44,10 @@ class APT:
         """
         if self.x0 is not None:
             vec_int=dec2bin(self.x0,self.L)
-            vec=np.zeros((2**self.L,),dtype=complex)
+            vec=np.zeros((2**self.L,),dtype=self.dtype)
             vec[vec_int]=1
         else:
-            vec=Haar_state(self.L, 1,rng=self.rng_vec,k=1).flatten()
+            vec=Haar_state(self.L, 1,rng=self.rng_vec,k=1).flatten().astype(self.dtype)
         return vec.reshape((2,)*self.L)
             
     def unitary_layer(self,even=True):

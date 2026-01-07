@@ -7,7 +7,7 @@
 #PBS -m abe
 #PBS -M hnpanboa@gmail.com
 #PBS -r y
-#PBS -J 0-1
+#PBS -J 0-6
 
 cd $HOME/control_transition
 
@@ -22,12 +22,11 @@ pyenv shell miniforge3-25.1.1-2
 PYTHON_PATH="$HOME/.pyenv/versions/miniforge3-25.1.1-2/bin/python"
 
 # Define parameter arrays
-L_VALUES=(12 14 16 18 20)
+L_VALUES=(14 )
+# L_VALUES=(12 14 16 18 20)
 # L_VALUES=(128 )
 # L_VALUES=(256 )
-PM_VALUES=(0.085 0.090 0.095 0.100 0.110 0.120 0.130)
-# PM_VALUES=(0.662 0.664 0.666 0.668 0.672 0.674 0.676 0.678)
-# PM_VALUES=(0.5 0.55 0.6 0.64 0.65 0.66 0.662 0.664 0.666 0.668 0.67 0.672 0.674 0.676 0.678 0.68 0.69 0.7 0.71 0.72 0.73 0.74 0.75)
+PM_VALUES=(0.085 0.087 0.089 0.09 0.091 0.093 0.095)
 
 # Calculate indices from PBS_ARRAY_INDEX
 # Index logic: L varies slower, p_m varies faster (inner loop)

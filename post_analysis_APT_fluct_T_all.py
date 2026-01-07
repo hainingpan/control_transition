@@ -157,7 +157,7 @@ def run(L, p_m, ob):
             # mean_log_coh_list[(p,L)] = mean_log_coh_sum/num_traj
 
 
-    with open(f'traj_state_var_{p_m:.3f}_{ob}_L{L}_Clifford.pickle','wb') as f:
+    with open(f'traj_state_var_{p_m:.3f}_{ob}_L{L}_APT.pickle','wb') as f:
         pickle.dump({
             'traj_weight': traj_weight_list,
             'state_weight': state_weight_list,

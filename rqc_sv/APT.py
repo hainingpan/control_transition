@@ -90,6 +90,11 @@ class APT:
         """ pos: position of measurement, count from left"""
         return contract(self.vec.conj(), np.arange(self.L), self.vec, np.arange(self.L), self.delta[n],[pos]).real
 
+    def inner_prob_2(self, pos_i, pos_j, n_i=1, n_j=1):
+        """Joint probability of measuring n_i at pos_i and n_j at pos_j"""
+        return contract(self.vec.conj(), np.arange(self.L), self.vec, np.arange(self.L),
+                       self.delta[n_i], [pos_i], self.delta[n_j], [pos_j]).real
+
     def normalize(self):
         norm=np.linalg.norm(self.vec)
         self.vec/=norm
@@ -109,15 +114,16 @@ class APT:
                 if self.store_op:
                     self.op_history[-1].append('X')
 
-    def order_parameter(self, moment=1):
-        # n = 1/L sum_i p(down)_i
-        # n^2 = 1/L^2 sum_{i,j} p(down)_i p(down)_j
+    def order_parameter(self, moment=(1,2)):
+        # <n> = 1/L sum_i <p(down)_i>
+        # <n>^2 = 1/L^2 sum_{i,j} <p(down)_i p(down)_j>
         p_i = [self.inner_prob(pos=i,n=1) for i in range(self.L)]
-        rs = {}
+        rs = {} 
         if 1 in moment:
             rs['OP'] = np.sum(p_i)/self.L
         if 2 in moment:
-            rs['OP2'] = np.sum(np.outer(p_i,p_i))/(self.L**2)
+            p_ij = [self.inner_prob_2(i, j) for i in range(self.L) for j in range(i+1, self.L)]
+            rs['OP2'] = (np.sum(p_i) + 2*np.sum(p_ij)) / self.L**2
         return rs
             
     def half_system_entanglement_entropy(self,vec=None,selfaverage=False,n=1,threshold=1e-10):

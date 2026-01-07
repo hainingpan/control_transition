@@ -15,11 +15,13 @@ def run(inputs):
     # for i in range(2*apt.L):
     tf = int(6*apt.L**1.6)
     OP_list=[]
+    OP2_list=[]
     for i in range(tf):
         apt.random_cicuit(p_m=p_m,p_f=p_f,even=True)
         apt.random_cicuit(p_m=p_m,p_f=p_f,even=False)
         OP_list.append(apt.order_parameter())
-    return OP_list
+        OP2_list.append(apt.order_parameter(moment=2))
+    return {"OP": OP_list, "OP2": OP2_list}
 
 
 
@@ -48,10 +50,12 @@ if __name__=="__main__":
         delayed(run)(input_data) for input_data in tqdm(inputs, desc="Processing")
     )
 
-    rs=np.array(results).reshape((p_m_list.shape[0],np.abs(p_f_list.shape[0]),es_list.shape[0],es_C_list.shape[0],-1))
-    OP_map=rs
+    keys = results[0].keys()
+    shape = (p_m_list.shape[0], np.abs(p_f_list.shape[0]), es_list.shape[0], es_C_list.shape[0], -1)
+    data = {key: np.array([r[key] for r in results]).reshape(shape) for key in keys}
+    data["args"] = args
 
     with open(os.environ.get('WORKDIR', '..') + '/control_transition/APT_OP_T/APT_En({:d},{:d})_EnC({:d},{:d})_pm({:.3f},{:.3f},{:.0f})_pf({:.3f},{:.3f},{:.0f})_L{:d}_OP_T.pickle'.format(*args.es,*args.es_C,*args.p_m,*args.p_f,args.L),'wb') as f:
-        pickle.dump({"OP":OP_map,"args":args}, f)
+        pickle.dump(data, f)
 
     print('Time elapsed: {:.4f}'.format(time()-st))

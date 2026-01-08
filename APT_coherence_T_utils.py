@@ -17,17 +17,18 @@ def sem(arr, axis=None, ddof=1):
 def _load_pickle_with_swap(fn):
     data = rqc.load_pickle(fn)
     coherence = data.get('coherence')
-    if coherence is not None and getattr(coherence, 'ndim', 0) == 5:
+    # if coherence is not None and getattr(coherence, 'ndim', 0) == 5:
         # stored as (p_m, p_f, es_m, es_C, T); swap axes to match parse_APT_T expectation
-        data['coherence'] = np.swapaxes(coherence, 2, 3)
+        # data['coherence'] = np.swapaxes(coherence, 2, 3)
+        # pass
     return data
 
 
 def _load_zip_pickle_with_swap(fn, z):
     data = rqc.load_zip_pickle(fn, z)
     coherence = data.get('coherence')
-    if coherence is not None and getattr(coherence, 'ndim', 0) == 5:
-        data['coherence'] = np.swapaxes(coherence, 2, 3)
+    # if coherence is not None and getattr(coherence, 'ndim', 0) == 5:
+    #     data['coherence'] = np.swapaxes(coherence, 2, 3)
     return data
 
 # This is the old version before changing to es_C batching, can be dumped later

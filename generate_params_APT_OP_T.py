@@ -23,11 +23,11 @@ output_filename = 'params_APT_OP_T.txt'
 # - es_C_batch: circuit seeds per job (per_esC0 value)
 
 batch_config = {
-    12: {'total_es': 500, 'total_es_C': 500, 'es_batch': 500, 'es_C_batch': 50},
-    14: {'total_es': 500, 'total_es_C': 500, 'es_batch': 500, 'es_C_batch': 25},
-    # 16: {'total_es': 500, 'total_es_C': 500, 'es_batch': 500, 'es_C_batch': 10},
-    # 18: {'total_es': 500, 'total_es_C': 500, 'es_batch': 500, 'es_C_batch': 5},
-    # 20: {'total_es': 500, 'total_es_C': 500, 'es_batch': 500, 'es_C_batch': 2},
+    # 12: {'total_es': 500, 'total_es_C': 500, 'es_batch': 500, 'es_C_batch': 50},
+    # 14: {'total_es': 500, 'total_es_C': 500, 'es_batch': 500, 'es_C_batch': 25},
+    16: {'total_es': 500, 'total_es_C': 500, 'es_batch': 500, 'es_C_batch': 10},
+    18: {'total_es': 500, 'total_es_C': 500, 'es_batch': 500, 'es_C_batch': 5},
+    20: {'total_es': 500, 'total_es_C': 500, 'es_batch': 500, 'es_C_batch': 2},
     # 22: {'total_es': 500, 'total_es_C': 500, 'es_batch': 500, 'es_C_batch': 1},
     # L=24: ~3.85h per traj×circuit, 100 traj × 1 circuit per job ≈ 16h
     # 24: {'total_es': 500, 'total_es_C': 500, 'es_batch': 100, 'es_C_batch': 1},

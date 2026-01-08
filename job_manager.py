@@ -16,7 +16,7 @@ from rich.progress import Progress, BarColumn, TextColumn, TaskProgressColumn
 # --- Configuration ---
 PARAMS_FILE = "params_APT_OP_T.txt"
 SUBMISSION_SCRIPT = "slurm_APT_OP_T.sh"
-STATE_FILE = "job_manager_state_14.json"
+STATE_FILE = "job_manager_state_16.json"
 MAX_JOBS_PER_PARTITION = {
     "main": 500,
     "gpu": 150,
@@ -371,7 +371,8 @@ def generate_display(state):
     """Generate the full Rich display."""
     import shutil
     terminal_width = shutil.get_terminal_size().columns
-    grid_width = min(terminal_width - 4, 100)  # Leave some margin
+    # Use most of the terminal width for the grid (subtract panel borders)
+    grid_width = terminal_width - 6  # Account for panel borders
 
     counts = get_status_counts(state)
     total = len(state)

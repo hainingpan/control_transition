@@ -50,3 +50,4 @@ $PYTHON_PATH $PWD/post_analysis_APT_fluct_T_all.py \
 
 echo "End time: $(date)"
 echo "=== Completed ==="
+python post_analysis_APT_fluct_T_all.py --L 12 --p_m 0.095 --ob OP

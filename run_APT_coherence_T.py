@@ -13,7 +13,8 @@ def run(inputs):
     L, p_m,p_f,seed, seed_C  = inputs
     apt=APT(L=L,x0=Fraction(2**L-1,2**L),seed=seed,seed_C=seed_C,seed_vec=None,store_op=False)
     # for i in range(2*apt.L):
-    tf = int(6*apt.L**1.6)
+    # tf = int(6*apt.L**1.6)
+    tf = int(0.5*apt.L**1.6)
     coherence_list=[]
     for i in range(tf):
         apt.random_circuit(p_m=p_m,p_f=p_f,even=True)

@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --time=18:00:00
+#SBATCH --time=24:00:00
 #SBATCH --partition=main
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
@@ -13,7 +13,7 @@
 
 # Set number of parallel jobs based on allocated CPUs
 N_JOBS="$SLURM_CPUS_PER_TASK"
-
+echo "Allocated CPUs: $N_JOBS"
 # Thread control for numerical libraries
 export OMP_NUM_THREADS=1
 export NUMEXPR_NUM_THREADS=1

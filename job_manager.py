@@ -16,7 +16,7 @@ from rich.progress import Progress, BarColumn, TextColumn, TaskProgressColumn
 # --- Configuration ---
 PARAMS_FILE = "params_APT_OP_T.txt"
 SUBMISSION_SCRIPT = "slurm_APT_OP_T.sh"
-STATE_FILE = "job_manager_state_16.json"
+STATE_FILE = "job_manager_state.json"
 MAX_JOBS_PER_PARTITION = {
     "main": 500,
     "gpu": 150,

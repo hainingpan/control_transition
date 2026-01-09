@@ -12,7 +12,7 @@ output_dir = os.path.join(os.environ.get('WORKDIR', '..'), 'control_transition/A
 # p_m_values = np.hstack([np.arange(0, 0.08, 0.01), np.arange(0.08, 0.101, 0.005),np.arange(0.11, 0.2, 0.01), np.arange(0.2, 0.35, 0.02)]) # this is p_m = p_f 
 # p_m_values = np.hstack([np.arange(0, 0.06, 0.02), np.arange(0.06, 0.08, 0.01), np.arange(0.085, 0.101, 0.005),np.arange(0.11, 0.13, 0.01), ])  # Coarse/fine spacing
 # p_m_values = np.hstack([np.arange(0.085, 0.101, 0.005),np.arange(0.11, 0.13, 0.01), ])  # Coarse/fine spacing
-p_m_values = np.hstack([0.0, 0.05, 0.15, 0.2, 0.4,0.6, ])  # Coarse/fine spacing
+p_m_values = np.hstack([[0.0, 0.05, 0.14, 0.15, 0.16,0.17,0.18,0.19, 0.2] , np.arange(0.085, 0.101, 0.005), np.arange(0.11, 0.13, 0.01)] )  # Coarse/fine spacing
 
 # pf = [0.0, 0.0, -1]
 pf = [1,1,1]
@@ -43,13 +43,13 @@ output_filename = 'params_APT_coherence_T.txt'
 # }
 # This is for base ~4000 circuits
 batch_config = {
-    12: {'es_C_batch': 2000, 'num_batches': 2},
-    14: {'es_C_batch': 2000, 'num_batches': 2},
-    16: {'es_C_batch': 2000, 'num_batches': 2},
-    18: {'es_C_batch': 2000, 'num_batches': 2},
+    12: {'es_C_batch': 2000, 'num_batches': 4},
+    14: {'es_C_batch': 2000, 'num_batches': 4},
+    16: {'es_C_batch': 2000, 'num_batches': 4},
+    18: {'es_C_batch': 2000, 'num_batches': 4},
     20: {'es_C_batch': 1000, 'num_batches': 4},
-    22: {'es_C_batch': 24*10, 'num_batches': 4000//(24*10)+1},
-    24: {'es_C_batch': 24*2, 'num_batches': 4000//(24*2)+1}
+    22: {'es_C_batch': 24*10, 'num_batches': 8000//(24*10)+1},
+    24: {'es_C_batch': 24*2, 'num_batches': 8000//(24*2)+1}
 }
 L_values = list(batch_config.keys())
 

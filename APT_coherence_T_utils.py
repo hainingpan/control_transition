@@ -9,10 +9,29 @@ import matplotlib.pyplot as plt
 import rqc
 
 def sem(arr, axis=None, ddof=1):
-    """Standard error of the mean."""
+    """Standard error of the mean, ignoring NaN values."""
     arr = np.asarray(arr)
-    n = arr.shape[axis] if axis is not None else arr.size
-    return arr.std(axis=axis, ddof=ddof) / np.sqrt(n)
+    # Count non-NaN values along the axis
+    n = np.sum(~np.isnan(arr), axis=axis)
+    return np.nanstd(arr, axis=axis, ddof=ddof) / np.sqrt(n)
+
+def stack_with_nan_padding(arrays):
+    """Stack arrays of potentially different lengths, padding shorter ones with NaN.
+
+    Args:
+        arrays: Iterable of 1D arrays (can have different lengths)
+
+    Returns:
+        2D numpy array with shape (n_arrays, max_length), padded with NaN
+    """
+    arrays = list(arrays)
+    if len(arrays) == 0:
+        return np.array([])
+    max_len = max(len(arr) for arr in arrays)
+    result = np.full((len(arrays), max_len), np.nan)
+    for i, arr in enumerate(arrays):
+        result[i, :len(arr)] = arr
+    return result
 
 def _load_pickle_with_swap(fn):
     data = rqc.load_pickle(fn)
@@ -81,7 +100,7 @@ def _load_zip_pickle_with_swap(fn, z):
 
 def apt_coherence_to_df(data_dict):
     """Convert the loaded coherence dictionary to a pandas DataFrame."""
-    return rqc.convert_pd(data_dict, names=['Metrics', 'L', 'p_m', 'p_f', 'es_C', 'es_m'])
+    return rqc.convert_pd(data_dict, names=['Metrics', 'L', 'p_m', 'p_f', 'es_m', 'es_C'])
 
 
 ### Plot utilities
@@ -106,7 +125,7 @@ def plot_apt_coherence_T_vs_steps(data_df, fix_={'L': 12} , ax =None, z=0, delta
     fix_var = 'L' if iter_var != 'L' else 'p_m'
     for  idx, iter_,  in enumerate(iter_list):
 
-        data_ = np.stack(data_df.xs(iter_, level=iter_var).xs(fix_value,level=fix_var)['observations']).mean(axis=0)
+        data_ = np.nanmean(stack_with_nan_padding(data_df.xs(iter_, level=iter_var).xs(fix_value,level=fix_var)['observations']), axis=0)
         x = np.arange(len(data_))
         y = data_
         ax.plot(x[idx_:]/iter_**z, y[idx_:] * iter_**(delta), label=f'{iter_var}={iter_}', color=color_list[idx])
@@ -130,9 +149,9 @@ def plot_apt_coherence_T_vs_L(data_df, p_m, ax=None,idx_min=0, idx_max=2, min_fu
     if ax is None:
         fig, ax =plt.subplots(figsize=(4, 4))
     x = L_list
-    y = [np.stack(data_df.xs(p_m, level='p_m').xs(L,level='L')['observations'])[:,min_func(L):max_func(L)].mean() for L in L_list]
-    # y = [np.stack(data_df.xs(p_m, level='p_m').xs(L,level='L')['observations']).mean(axis=0)[-1:].mean() for L in L_list]
-    yerr = [sem(np.stack(data_df.xs(p_m, level='p_m').xs(L,level='L')['observations'])[:,min_func(L):max_func(L)]) for L in L_list]
+    y = [np.nanmean(stack_with_nan_padding(data_df.xs(p_m, level='p_m').xs(L,level='L')['observations'])[:,min_func(L):max_func(L)]) for L in L_list]
+    # y = [np.nanmean(stack_with_nan_padding(data_df.xs(p_m, level='p_m').xs(L,level='L')['observations']), axis=0)[-1:].mean() for L in L_list]
+    yerr = [sem(stack_with_nan_padding(data_df.xs(p_m, level='p_m').xs(L,level='L')['observations'])[:,min_func(L):max_func(L)]) for L in L_list]
     ax.errorbar(x, y, yerr=yerr, fmt='.-', capsize=5)
     ax.set_yscale('log')
     ax.set_title(f'$p_m$={p_m:.3f}')
@@ -166,7 +185,7 @@ def plot_apt_coherence_T_vs_steps_fixedL(data_df, L, ax =None, idx_=1):
     
     for  idx, p_m,  in enumerate(p_m_list):
 
-        data_ = np.stack(data_df.xs(p_m, level='p_m').xs(L,level='L')['observations']).mean(axis=0)
+        data_ = np.nanmean(stack_with_nan_padding(data_df.xs(p_m, level='p_m').xs(L,level='L')['observations']), axis=0)
         x = np.arange(len(data_))
         y = data_
         ax.plot(x[idx_:], y[idx_:], label=f'p_m={p_m:.3f}', color=color_list[idx])
@@ -190,9 +209,9 @@ def plot_apt_coherence_T_vs_steps_fixedp_m(data_df, p_m, ax =None, idx_=1, prefa
     for  idx, L,  in enumerate(L_list):
 
         if average_log:
-            data_ = np.exp(np.log(np.stack(data_df.xs(p_m, level='p_m').xs(L,level='L')['observations'])).mean(axis=0))
+            data_ = np.exp(np.nanmean(np.log(stack_with_nan_padding(data_df.xs(p_m, level='p_m').xs(L,level='L')['observations'])), axis=0))
         else:
-            data_ = np.stack(data_df.xs(p_m, level='p_m').xs(L,level='L')['observations']).mean(axis=0)
+            data_ = np.nanmean(stack_with_nan_padding(data_df.xs(p_m, level='p_m').xs(L,level='L')['observations']), axis=0)
             print(len(data_df.xs(p_m, level='p_m').xs(L,level='L')['observations']))
         x = np.arange(len(data_))
         y = data_
@@ -209,9 +228,9 @@ def plot_apt_coherence_T_vs_steps_fixedp_m(data_df, p_m, ax =None, idx_=1, prefa
             guide_y = []
             for L in L_list:
                 if average_log:
-                    data_ = np.exp(np.log(np.stack(data_df.xs(p_m, level='p_m').xs(L, level='L')['observations'])).mean(axis=0))
+                    data_ = np.exp(np.nanmean(np.log(stack_with_nan_padding(data_df.xs(p_m, level='p_m').xs(L, level='L')['observations'])), axis=0))
                 else:
-                    data_ = np.stack(data_df.xs(p_m, level='p_m').xs(L, level='L')['observations']).mean(axis=0)
+                    data_ = np.nanmean(stack_with_nan_padding(data_df.xs(p_m, level='p_m').xs(L, level='L')['observations']), axis=0)
                 t_idx = int(pf * L**z)
                 if t_idx < len(data_):
                     guide_t.append(t_idx)
@@ -237,14 +256,14 @@ def plot_apt_coherence_T_vs_L(data_df, p_m, ax=None,idx_min=0, idx_max=2, min_fu
     y = []
     yerr = []
     for L in L_list:
-        obs = np.stack(data_df.xs(p_m, level='p_m').xs(L, level='L')['observations'])
+        obs = stack_with_nan_padding(data_df.xs(p_m, level='p_m').xs(L, level='L')['observations'])
         max_idx = max_func(L) if max_func is not None else None
         obs_slice = obs[:, min_func(L):max_idx]
         if average_log:
-            sample_means = np.exp(np.log(obs_slice).mean(axis=1))
+            sample_means = np.exp(np.nanmean(np.log(obs_slice), axis=1))
         else:
-            sample_means = obs_slice.mean(axis=1)
-        y.append(sample_means.mean())
+            sample_means = np.nanmean(obs_slice, axis=1)
+        y.append(np.nanmean(sample_means))
         yerr.append(sem(sample_means))
     ax.errorbar(x, y, yerr=yerr, fmt='.-', capsize=5, color=color, label=label)
     ax.set_yscale('log')
@@ -351,10 +370,10 @@ def aggregate_over_samples(data_df):
             try:
                 # Get all observations for this (p_m, L) combination
                 subset = data_df.xs(p_m, level='p_m').xs(L, level='L')
-                # Stack all observation arrays
-                obs_stack = np.stack(subset['observations'].values)
+                # Stack all observation arrays, padding shorter ones with NaN
+                obs_stack = stack_with_nan_padding(subset['observations'].values)
                 # Compute mean and SEM across all samples
-                mean_val = obs_stack.mean(axis=0)
+                mean_val = np.nanmean(obs_stack, axis=0)
                 sem_val = sem(obs_stack, axis=0)
                 # Log2 of mean and its standard error via chain rule: d(log2(x))/dx = 1/(x*ln(2))
                 log_mean_val = np.log2(mean_val)

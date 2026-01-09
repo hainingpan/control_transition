@@ -9,8 +9,8 @@ output_dir = os.path.join(os.environ.get('WORKDIR', '..'), 'control_transition/C
 
 # Tunable parameter: p_m values sweep (one p_m per job)
 # p_m_values = np.array([0.5 , 0.55, 0.6 , 0.64, 0.65, 0.66, .662, .664, .666, 0.668,0.67,0.672, 0.674,0.676, 0.678, 0.68, 0.69, 0.7 , 0.71,0.72, 0.73, 0.74, 0.75])  # 22 values, fine grid
-# p_m_values = np.array([0.5, 0.55, 0.6, 0.64, 0.65, 0.66, 0.67, 0.68, 0.69, 0.7, 0.71, 0.72, 0.73, 0.74, 0.75])  # 15 values, coarse sweep
-p_m_values = np.array([0.,0.1,0.2,0.3,0.4,0.8,0.9])  # very coarse sweep
+p_m_values = np.array([0.5, 0.55, 0.6, 0.64, 0.65, 0.66, 0.67, 0.68, 0.69, 0.7, 0.71, 0.72, 0.73, 0.74, 0.75])  # 15 values, coarse sweep
+# p_m_values = np.array([0.,0.1,0.2,0.3,0.4,0.8,0.9])  # very coarse sweep
 
 # Tunable parameter: alpha (power-law exponent)
 alpha = 0.5
@@ -105,35 +105,35 @@ batch_config = {
     # 256: {'total_es': 500, 'total_es_C': 500, 'es_batch': 125, 'es_C_batch': 1},
 }
 
-# Now create a very fast parameter for coherence only (haven't yet deployed)
-batch_config = {
-    # L=16: max es*es_C = 864000/0.225 = 3.84M, use 500*500=250k (1 job per p_m)
-    16: {'total_es': 500, 'total_es_C': 500, 'es_batch': 500, 'es_C_batch': 50},
+# # Now create a very fast parameter for coherence only (haven't yet deployed)
+# batch_config = {
+#     # L=16: max es*es_C = 864000/0.225 = 3.84M, use 500*500=250k (1 job per p_m)
+#     16: {'total_es': 500, 'total_es_C': 500, 'es_batch': 500, 'es_C_batch': 50},
 
-    # L=24: interpolated between L=16 and L=32
-    24: {'total_es': 500, 'total_es_C': 500, 'es_batch': 500, 'es_C_batch': 50},
+#     # L=24: interpolated between L=16 and L=32
+#     24: {'total_es': 500, 'total_es_C': 500, 'es_batch': 500, 'es_C_batch': 50},
 
-    # L=32: max es*es_C = 864000/0.944 = 915k, use 500*500=250k (1 job per p_m)
-    32: {'total_es': 500, 'total_es_C': 500, 'es_batch': 500, 'es_C_batch': 50},
+#     # L=32: max es*es_C = 864000/0.944 = 915k, use 500*500=250k (1 job per p_m)
+#     32: {'total_es': 500, 'total_es_C': 500, 'es_batch': 500, 'es_C_batch': 50},
 
-    # L=48: interpolated between L=32 and L=64
-    48: {'total_es': 500, 'total_es_C': 500, 'es_batch': 500, 'es_C_batch': 25},
+#     # L=48: interpolated between L=32 and L=64
+#     48: {'total_es': 500, 'total_es_C': 500, 'es_batch': 500, 'es_C_batch': 25},
 
-    # L=64: max es*es_C = 864000/6.626 = 130k, use 500*100=50k (5 jobs per p_m)
-    64: {'total_es': 500, 'total_es_C': 500, 'es_batch': 500, 'es_C_batch': 10},
+#     # L=64: max es*es_C = 864000/6.626 = 130k, use 500*100=50k (5 jobs per p_m)
+#     64: {'total_es': 500, 'total_es_C': 500, 'es_batch': 500, 'es_C_batch': 10},
 
-    # L=96: interpolated between L=64 and L=128
-    96: {'total_es': 500, 'total_es_C': 500, 'es_batch': 500, 'es_C_batch': 5},
+#     # L=96: interpolated between L=64 and L=128
+#     96: {'total_es': 500, 'total_es_C': 500, 'es_batch': 500, 'es_C_batch': 5},
 
-    # L=128: max es*es_C = 864000/89.7 = 9632, use 500*10=5k (50 jobs per p_m)
-    128: {'total_es': 500, 'total_es_C': 500, 'es_batch': 500, 'es_C_batch': 5},
+#     # L=128: max es*es_C = 864000/89.7 = 9632, use 500*10=5k (50 jobs per p_m)
+#     128: {'total_es': 500, 'total_es_C': 500, 'es_batch': 500, 'es_C_batch': 5},
 
-    # L=192: interpolated between L=128 and L=256
-    192: {'total_es': 500, 'total_es_C': 500, 'es_batch': 500, 'es_C_batch': 2},
+#     # L=192: interpolated between L=128 and L=256
+#     192: {'total_es': 500, 'total_es_C': 500, 'es_batch': 500, 'es_C_batch': 2},
 
-    # # L=256: max es*es_C = 864000/1499 = 576, use 125*1=125 (2000 jobs per p_m)
-    256: {'total_es': 500, 'total_es_C': 500, 'es_batch': 125, 'es_C_batch': 1},
-}
+#     # # L=256: max es*es_C = 864000/1499 = 576, use 125*1=125 (2000 jobs per p_m)
+#     256: {'total_es': 500, 'total_es_C': 500, 'es_batch': 125, 'es_C_batch': 1},
+# }
 
 
 

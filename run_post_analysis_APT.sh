@@ -1,13 +1,13 @@
 #!/bin/bash
 #PBS -A ONRDC54450755
 #PBS -l walltime=0:30:00
-#PBS -q standard
+#PBS -q debug
 #PBS -l select=1:ncpus=192:mpiprocs=1
 #PBS -N PostAnalysis_Clifford
 #PBS -m abe
 #PBS -M hnpanboa@gmail.com
 #PBS -r y
-#PBS -J 1-14
+#PBS -J 8-9
 
 cd $HOME/control_transition
 

@@ -8,13 +8,28 @@ from pathlib import Path
 output_dir = os.path.join(os.environ.get('WORKDIR', '..'), 'control_transition/APT_OP_T')
 
 # Tunable parameter: p_m values sweep (one p_m per job)
-p_m_values = [0.085,0.087,0.089,0.09,0.091,0.093,0.095, ]
+# p_m_values = [0.085,0.087,0.089,0.09,0.091,0.093,0.095, ]
+p_m_values = [0.05,0.06,0.07,0.08,0.10,0.11,0.12, ]
 
 # p_f parameters: [start, end, num] for linspace format
 # [1.0, 1.0, 1] means p_f = linspace(1.0, 1.0, 1) = [1.0]
 pf = [1.0, 1.0, 1]
 
 output_filename = 'params_APT_OP_T.txt'
+
+def scramble_params_file(path):
+    """Randomly reorder generated parameter lines to vary job order."""
+    if not os.path.isfile(path):
+        return 0
+    with open(path, 'r') as f:
+        lines = [line.strip() for line in f if line.strip()]
+    if not lines:
+        return 0
+    rng = np.random.default_rng()
+    rng.shuffle(lines)
+    with open(path, 'w') as f:
+        f.write('\n'.join(lines) + '\n')
+    return len(lines)
 
 # Batch configuration:
 # - total_es: total trajectory seeds desired (500 for all L)
@@ -23,8 +38,8 @@ output_filename = 'params_APT_OP_T.txt'
 # - es_C_batch: circuit seeds per job (per_esC0 value)
 
 batch_config = {
-    # 12: {'total_es': 500, 'total_es_C': 500, 'es_batch': 500, 'es_C_batch': 50},
-    # 14: {'total_es': 500, 'total_es_C': 500, 'es_batch': 500, 'es_C_batch': 25},
+    12: {'total_es': 500, 'total_es_C': 500, 'es_batch': 500, 'es_C_batch': 50},
+    14: {'total_es': 500, 'total_es_C': 500, 'es_batch': 500, 'es_C_batch': 25},
     16: {'total_es': 500, 'total_es_C': 500, 'es_batch': 500, 'es_C_batch': 10},
     # 18: {'total_es': 500, 'total_es_C': 500, 'es_batch': 500, 'es_C_batch': 2},
     # 20: {'total_es': 500, 'total_es_C': 500, 'es_batch': 500, 'es_C_batch': 2},
@@ -86,6 +101,10 @@ for fixed_params, vary_params in params_list:
         load=False,
         data_dict=None,
     )
+
+# Scramble the final parameter order to distribute jobs more randomly
+scrambled = scramble_params_file(output_filename)
+print(f"Scrambled {scrambled} entries in {output_filename}")
 
 print(f"Generated {output_filename}")
 print(f"L values: {L_values}")

@@ -1,13 +1,13 @@
 #!/bin/bash
 #PBS -A ONRDC54450755
-#PBS -l walltime=0:59:00
-#PBS -q background
+#PBS -l walltime=0:30:00
+#PBS -q standard
 #PBS -l select=1:ncpus=192:mpiprocs=1
 #PBS -N PostAnalysis_Clifford
 #PBS -m abe
 #PBS -M hnpanboa@gmail.com
 #PBS -r y
-#PBS -J 1-6
+#PBS -J 1-14
 
 cd $HOME/control_transition
 
@@ -22,7 +22,7 @@ pyenv shell miniforge3-25.1.1-2
 PYTHON_PATH="$HOME/.pyenv/versions/miniforge3-25.1.1-2/bin/python"
 
 # Define parameter arrays
-L_VALUES=(12 )
+L_VALUES=(14 16)
 # L_VALUES=(12 14 16 18 20)
 # L_VALUES=(128 )
 # L_VALUES=(256 )
@@ -50,9 +50,3 @@ $PYTHON_PATH $PWD/post_analysis_APT_fluct_T_all.py \
 
 echo "End time: $(date)"
 echo "=== Completed ==="
-python post_analysis_APT_fluct_T_all.py --L 14 --p_m 0.087 --ob OP && \
-python post_analysis_APT_fluct_T_all.py --L 14 --p_m 0.089 --ob OP && \
-python post_analysis_APT_fluct_T_all.py --L 14 --p_m 0.09 --ob OP && \
-python post_analysis_APT_fluct_T_all.py --L 14 --p_m 0.091 --ob OP && \
-python post_analysis_APT_fluct_T_all.py --L 14 --p_m 0.093 --ob OP && \
-python post_analysis_APT_fluct_T_all.py --L 14 --p_m 0.095 --ob OP 

@@ -7,7 +7,7 @@
 #PBS -m abe
 #PBS -M hnpanboa@gmail.com
 #PBS -r y
-#PBS -J 1-635
+#PBS -J 1-140
 
 
 cd $HOME/control_transition

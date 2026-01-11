@@ -36,7 +36,7 @@ batch_config = {
     # 24: {'total_es': 500, 'total_es_C': 500, 'es_batch': 100, 'es_C_batch': 1},
 }
 
-def run(L, p_m, ob):
+def run(L, p_m, ob, threshold=1e-8):
     # ob="DW"
     # ob="O"
     ob1=ob+''
@@ -87,7 +87,6 @@ def run(L, p_m, ob):
             data_dict=data_dict,
         )
     df=rqc.convert_pd(data_dict, names=['Metrics', 'L', 'p_m', 'p_f', 'es_m', 'es_C'])
-    
     def process_each_traj(df,L,p_m,sC, threshold=1e-8, ob1='OP', ob2='OP2'):
         # Compute [0th, 1st, 2nd] moments of the observable 'ob' over [trajectory, state, shots] fluctuation
         # data_ob1.shape = (num_state, num_timepoints), ob1 means "first moment of ob"
@@ -139,7 +138,7 @@ def run(L, p_m, ob):
             ob1_mean_sum=0
             for sC in range(1,batch_config[L]['total_es_C']+1):
                 # try:
-                num_state_, traj_weight, state_weight, shot_weight, traj_var, state_var, shot_var, ob1_mean = process_each_traj(df,L=L,p_m=p,sC=sC,)
+                num_state_, traj_weight, state_weight, shot_weight, traj_var, state_var, shot_var, ob1_mean = process_each_traj(df,L=L,p_m=p,sC=sC,threshold=threshold)
                 num_traj +=1
                 traj_weight_sum +=traj_weight
                 state_weight_sum +=state_weight
@@ -167,7 +166,7 @@ def run(L, p_m, ob):
             # mean_log_coh_list[(p,L)] = mean_log_coh_sum/num_traj
 
 
-    with open(f'traj_state_var_{p_m:.3f}_{ob}_L{L}_APT.pickle','wb') as f:
+    with open(f'traj_state_var_{p_m:.3f}_{ob}_L{L}_APT_epsilon{threshold:.1e}.pickle','wb') as f:
         pickle.dump({
             'traj_weight': traj_weight_list,
             'state_weight': state_weight_list,
@@ -189,7 +188,9 @@ if __name__ == "__main__":
     parser.add_argument('--p_m', type=float, required=True, help='Measurement probability') 
 
     parser.add_argument('--ob', type=str, required=True, help='Observable, op')
+    parser.add_argument('--threshold', type=float, default=1e-8, help='Threshold (default: 1e-8)')
+
     args = parser.parse_args()
 
 
-    run(args.L, args.p_m, args.ob)
+    run(args.L, args.p_m, args.ob, args.threshold)

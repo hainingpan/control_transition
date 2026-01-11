@@ -163,7 +163,6 @@ def run(L, p_m, ob, threshold=1e-8):
             state_var_list[(p,L)] = state_sq_sum/num_state - (state_mean_sum/num_state)**2
             shot_var_list[(p,L)] = shot_sq_sum/num_traj - (shot_mean_sum/num_traj)**2
             ob1_mean_list[(p,L)] = ob1_mean_sum/num_traj
-            # mean_log_coh_list[(p,L)] = mean_log_coh_sum/num_traj
 
 
     with open(f'traj_state_var_{p_m:.3f}_{ob}_L{L}_APT_epsilon{threshold:.1e}.pickle','wb') as f:
@@ -179,7 +178,6 @@ def run(L, p_m, ob, threshold=1e-8):
             'shot_var': shot_var_list,
             'ob1_mean': ob1_mean_list,
             },f)
-    # return traj_weight_list, state_weight_list
 
 if __name__ == "__main__":
     import argparse

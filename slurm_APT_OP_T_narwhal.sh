@@ -5,12 +5,12 @@
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=128
-#SBATCH --job-name=Clifford_T
+#SBATCH --job-name=APT_OP_T
 ##SBATCH --mail-type=BEGIN,END,FAIL
 ##SBATCH --mail-user=hnpanboa@gmail.com
 #SBATCH --requeue
-#SBATCH --output=slurm_out/Clifford_T_%A_%a.out
-#SBATCH --array=1-146
+#SBATCH --output=slurm_out/APT_OP_T_%A_%a.out
+#SBATCH --array=1-111
 
 cd $HOME/control_transition
 
@@ -29,7 +29,7 @@ PYTHON_PATH="$HOME/.pyenv/versions/miniforge3-25.1.1-2/bin/python"
 echo "Python path: $(which python)"
 
 # Parameters file
-PARAMS_FILE="$HOME/control_transition/params_clifford_T.txt"
+PARAMS_FILE="$HOME/control_transition/params_APT_OP_T.txt"
 
 # Calculate actual parameter line using OFFSET (default 0)
 OFFSET=${OFFSET:-0}
@@ -45,7 +45,7 @@ echo "Parameters: $PARAMS"
 echo "Using $N_JOBS parallel jobs"
 
 # Run the simulation with full parameter string
-$PYTHON_PATH $PWD/run_Clifford_T.py \
+$PYTHON_PATH $PWD/run_APT_OP_T.py \
     $PARAMS \
     --n_jobs $N_JOBS
 

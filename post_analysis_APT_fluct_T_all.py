@@ -137,22 +137,24 @@ def run(L, p_m, ob, threshold=1e-8):
             shot_sq_sum=0
             ob1_mean_sum=0
             for sC in range(1,batch_config[L]['total_es_C']+1):
-                # try:
-                num_state_, traj_weight, state_weight, shot_weight, traj_var, state_var, shot_var, ob1_mean = process_each_traj(df,L=L,p_m=p,sC=sC,threshold=threshold)
-                num_traj +=1
-                traj_weight_sum +=traj_weight
-                state_weight_sum +=state_weight
-                shot_weight_sum +=shot_weight
-                traj_mean_sum += traj_var
-                state_mean_sum += state_var.sum(axis=0)
-                shot_mean_sum += shot_var
-                traj_sq_sum += (traj_var**2)
-                state_sq_sum += (state_var**2).sum(axis=0)
-                shot_sq_sum += (shot_var**2)
-                num_state += num_state_
-                ob1_mean_sum += ob1_mean
-                # except:
-                #     pass
+                try:
+                    num_state_, traj_weight, state_weight, shot_weight, traj_var, state_var, shot_var, ob1_mean = process_each_traj(df,L=L,p_m=p,sC=sC,threshold=threshold)
+                    num_traj +=1
+                    traj_weight_sum +=traj_weight
+                    state_weight_sum +=state_weight
+                    shot_weight_sum +=shot_weight
+                    traj_mean_sum += traj_var
+                    state_mean_sum += state_var.sum(axis=0)
+                    shot_mean_sum += shot_var
+                    traj_sq_sum += (traj_var**2)
+                    state_sq_sum += (state_var**2).sum(axis=0)
+                    shot_sq_sum += (shot_var**2)
+                    num_state += num_state_
+                    ob1_mean_sum += ob1_mean
+                except KeyError:
+                    # Skip this es_C index if it doesn't exist in the dataset
+                    print(f"Warning: es_C={sC} not found for L={L}, p_m={p}, skipping...")
+                    continue
             traj_weight_list[(p,L)]=traj_weight_sum/num_traj
             state_weight_list[(p,L)]=state_weight_sum/num_state
             shot_weight_list[(p,L)]=shot_weight_sum/num_traj

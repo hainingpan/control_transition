@@ -151,6 +151,7 @@ def plot_metric_T_vs_p(data_df, metric, L_list =None, p_m_list=None, z = 1.62, n
     color_list = cmap(np.linspace(0.4,1,len(L_list)))
     rows = []
     for L_idx, L in enumerate(L_list):
+        # p_m_list = data_df.xs(L, level='L').index.get_level_values('p_m').unique()
         y = np.array([data_df.xs((metric, p, L), level = ('Metrics','p_m','L'))['observations'].iloc[0][min_func(L):max_func(L)].mean() for p in p_m_list])
 
         if collapse:

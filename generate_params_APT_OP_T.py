@@ -9,7 +9,8 @@ output_dir = os.path.join(os.environ.get('WORKDIR', '..'), 'control_transition/A
 
 # Tunable parameter: p_m values sweep (one p_m per job)
 # p_m_values = [0.085,0.087,0.089,0.09,0.091,0.093,0.095, ]
-p_m_values = [0.05,0.06,0.07,0.08,0.10,0.11,0.12, ]
+# p_m_values = [0.05,0.06,0.07,0.08,0.10,0.11,0.12, ]
+p_m_values = [0.075,0.077,0.079,0.081,0.083] + [0.085,0.087,0.089,0.09,0.091,0.093,0.095, ]+ [0.05,0.06,0.07,0.08,0.10,0.11,0.12, ]  
 
 # p_f parameters: [start, end, num] for linspace format
 # [1.0, 1.0, 1] means p_f = linspace(1.0, 1.0, 1) = [1.0]
@@ -38,11 +39,11 @@ def scramble_params_file(path):
 # - es_C_batch: circuit seeds per job (per_esC0 value)
 
 batch_config = {
-    12: {'total_es': 500, 'total_es_C': 500, 'es_batch': 500, 'es_C_batch': 50},
-    14: {'total_es': 500, 'total_es_C': 500, 'es_batch': 500, 'es_C_batch': 25},
-    16: {'total_es': 500, 'total_es_C': 500, 'es_batch': 500, 'es_C_batch': 10},
-    18: {'total_es': 500, 'total_es_C': 500, 'es_batch': 500, 'es_C_batch': 2},
-    # 20: {'total_es': 500, 'total_es_C': 500, 'es_batch': 500, 'es_C_batch': 2},
+    # 12: {'total_es': 500, 'total_es_C': 500, 'es_batch': 500, 'es_C_batch': 50},
+    # 14: {'total_es': 500, 'total_es_C': 500, 'es_batch': 500, 'es_C_batch': 25},
+    # 16: {'total_es': 500, 'total_es_C': 500, 'es_batch': 500, 'es_C_batch': 10},
+    # 18: {'total_es': 500, 'total_es_C': 500, 'es_batch': 500, 'es_C_batch': 2},
+    20: {'total_es': 500, 'total_es_C': 500, 'es_batch': 500, 'es_C_batch': 2},
     # 22: {'total_es': 500, 'total_es_C': 500, 'es_batch': 500, 'es_C_batch': 1},
     # L=24: ~3.85h per traj×circuit, 100 traj × 1 circuit per job ≈ 16h
     # 24: {'total_es': 500, 'total_es_C': 500, 'es_batch': 100, 'es_C_batch': 1},

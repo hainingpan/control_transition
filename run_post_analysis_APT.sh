@@ -1,13 +1,13 @@
 #!/bin/bash
 #PBS -A ONRDC54450755
-#PBS -l walltime=0:30:00
+#PBS -l walltime=0:59:00
 #PBS -q standard
 #PBS -l select=1:ncpus=192:mpiprocs=1
-#PBS -N PostAnalysis_Clifford
+#PBS -N PostAnalysis_APT
 #PBS -m abe
 #PBS -M hnpanboa@gmail.com
 #PBS -r y
-#PBS -J 0-20
+#PBS -J 0-75
 
 cd $HOME/control_transition
 
@@ -22,12 +22,12 @@ pyenv shell miniforge3-25.1.1-2
 PYTHON_PATH="$HOME/.pyenv/versions/miniforge3-25.1.1-2/bin/python"
 
 # Define parameter arrays
-L_VALUES=(12 14 16)
-# L_VALUES=(12 14 16 18 20)
-# L_VALUES=(128 )
-# L_VALUES=(256 )
+# L_VALUES=(12 14 16)
+# L_VALUES=(18 )
+# L_VALUES=(12 14 16 18)
 # PM_VALUES=(0.085 0.087 0.089 0.09 0.091 0.093 0.095)
-PM_VALUES=(0.05 0.06 0.07 0.08 0.10 0.11 0.12)
+# PM_VALUES=(0.05 0.06 0.07 0.08 0.10 0.11 0.12)
+PM_VALUES=(0.05 0.06 0.07 0.08 0.10 0.11 0.12 0.085 0.087 0.089 0.09 0.091 0.093 0.095 0.075 0.077 0.079 0.081 0.083)
 
 # Calculate indices from PBS_ARRAY_INDEX
 # Index logic: L varies slower, p_m varies faster (inner loop)
@@ -51,3 +51,7 @@ $PYTHON_PATH $PWD/post_analysis_APT_fluct_T_all.py \
 
 echo "End time: $(date)"
 echo "=== Completed ==="
+
+# $PYTHON_PATH $PWD/post_analysis_APT_traj_var_hist.py \
+
+# python post_analysis_APT_fluct_T_all.py --L 18 --p_m 0.05 --ob OP --threshold 1e-8
